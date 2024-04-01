@@ -18,6 +18,9 @@ class Service(interface.ServiceInterface):
     async def join_room(self, user_id: str, room_id: int, callback: interface.CallbackType) -> None:
         return await super().join_room(user_id, room_id, callback)
 
+    async def set_entries(self, user_id: str, room_id: int, entries: typing.List[entry.ProviderEntry]) -> None:
+        return await super().set_entries(user_id, room_id, entries)
+
     async def start_vote(self, user_id: str) -> None:
         return await super().start_vote(user_id)
 
