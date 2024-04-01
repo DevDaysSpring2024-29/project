@@ -1,3 +1,4 @@
+import random
 import typing
 
 from providers import interface as providers
@@ -21,7 +22,7 @@ class Service(interface.ServiceInterface):
         return await super().start_vote(user_id)
 
     async def vote(self, user_id: str, is_liked: bool, option_name: str) -> entry.ProviderEntry:
-        provider = self.providers[providers.ProviderKind.DUMMY]
+        provider = self.providers[providers.ProviderKind.KINOPOISK]
         params = providers.ProviderParams(filters={}, exclude_names=[])
         entries = await provider.get_entries(params)
-        return entries[0]
+        return random.choice(entries)

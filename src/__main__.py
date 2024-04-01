@@ -33,6 +33,8 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
+config = None
+
 
 # Define a few command handlers. These usually take the two arguments update and
 # context.
@@ -54,7 +56,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Echo the user message."""
 
     # TODO: store single service per server
-    s = await service.get_service({})
+    s = await service.get_service(config)
 
     e = await s.vote("", False, "")
 
@@ -62,6 +64,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def main() -> None:
+    global config
     config = dotenv.dotenv_values(".env")
 
     """Start the bot."""
