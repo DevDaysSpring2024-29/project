@@ -1,6 +1,8 @@
 import random
 import typing
 
+import redis.asyncio as redis
+
 from providers import interface as providers
 from models import entry
 from models import room
@@ -9,8 +11,9 @@ from . import interface
 
 
 class Service(interface.ServiceInterface):
-    def __init__(self, providers: typing.Dict[providers.ProviderKind, providers.ProviderInterface]):
+    def __init__(self, storage: redis.Redis, providers: typing.Dict[providers.ProviderKind, providers.ProviderInterface]):
         self.providers = providers
+        self.storage = storage
 
     async def create_room(self, user_id: str, params: room.RoomParams, callback: interface.CallbackType) -> int:
         return await super().create_room(user_id, params, callback)
@@ -28,4 +31,10 @@ class Service(interface.ServiceInterface):
         provider = self.providers[providers.ProviderKind.KINOPOISK]
         params = providers.ProviderParams(filters={}, exclude_names=[])
         entries = await provider.get_entries(params)
-        return random.choice(entries)
+
+        entry = random.choice(entries)
+        test_value = await self.storage.get("test")
+
+        entry["name"] += test_value.decode()
+
+        return entry
