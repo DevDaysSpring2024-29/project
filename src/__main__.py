@@ -16,6 +16,7 @@ bot.
 """
 
 import logging
+import os
 
 import dotenv
 
@@ -65,7 +66,10 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def main() -> None:
     global config
-    config = dotenv.dotenv_values(".env")
+    config = {
+        **dotenv.dotenv_values(".env"),
+        **os.environ,
+    }
 
     """Start the bot."""
     # Create the Application and pass it your bot's token.
