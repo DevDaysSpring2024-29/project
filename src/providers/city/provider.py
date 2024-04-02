@@ -10,12 +10,12 @@ class CityProvider(providers.ProviderInterface):
     def __init__(self, overpass_url: str):
         self.overpass_url = overpass_url
         self.query = ('/* Get list of cities in Russian. */'
-                      '[out:json];area[name="Россия"];(node[place="city"](area););out;')
+                      "[out:json];area[name='Россия']->.russia;(node[place=city](area.russia););out 30;")
 
     async def get_entries(self, params: providers.ProviderParams) -> list[entry.ProviderEntry]:
 
         async with httpx.AsyncClient() as client:
-            r = await client.post(self.overpass_url, data=self.query)
+            r = await client.get(self.overpass_url, params={'data': self.query}, timeout=None)
 
             data = [element['tags']["name:ru"] for element in r.json()['elements']]
             return [
