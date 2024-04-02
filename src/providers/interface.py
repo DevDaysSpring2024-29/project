@@ -18,3 +18,5 @@ class ProviderKind(enum.StrEnum):
     DUMMY = "dummy"
     KINOPOISK = "kinopoisk"
     RESTAURANTS = "restaurants"
+    COUNTRY = "country"
+    CITY = "city"

@@ -4,6 +4,8 @@ from . import interface
 from .dummy import provider as dummy
 from .kinopoisk import provider as kinopoisk
 from .restaurants import provider as restaurants
+from .country import provider as country
+from .city import provider as city
 
 
 async def get_providers(config: typing.Dict[str, str]) -> typing.Dict[interface.ProviderKind, interface.ProviderInterface]:
@@ -12,4 +14,6 @@ async def get_providers(config: typing.Dict[str, str]) -> typing.Dict[interface.
         interface.ProviderKind.DUMMY: await dummy.get_provider(config),
         interface.ProviderKind.KINOPOISK: await kinopoisk.get_provider(config),
         interface.ProviderKind.RESTAURANTS: await restaurants.get_provider(config),
+        interface.ProviderKind.COUNTRY: await country.get_provider(config),
+        interface.ProviderKind.CITY: await city.get_provider(config)
     }
