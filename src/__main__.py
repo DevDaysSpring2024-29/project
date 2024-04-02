@@ -15,6 +15,7 @@ Press Ctrl-C on the command line or send a signal to the process to stop the
 bot.
 """
 
+import asyncio
 import logging
 import os
 
@@ -24,6 +25,7 @@ from telegram import ForceReply, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 import service
+from models import room
 
 # Enable logging
 logging.basicConfig(
@@ -34,7 +36,10 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-config = None
+CONFIG = None
+SERVICE = None
+
+ROOM_ID = None
 
 
 # Define a few command handlers. These usually take the two arguments update and
@@ -57,23 +62,50 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Echo the user message."""
 
     # TODO: store single service per server
-    s = await service.get_service(config)
 
-    e = await s.vote("", False, "")
 
-    await update.message.reply_text(e["name"])
+    text = update.message.text
+    cmd = text.split(' ')
+
+    async def callback(x, _y):
+        logger.info("callback: " + x)
+
+    if cmd[0] == "create":
+        params = room.RoomParams(
+            provider_name=cmd[1],
+            filters={},
+        )
+
+        global ROOM_ID
+        ROOM_ID = await SERVICE.create_room(str(update.effective_user.id), params, callback)
+
+        await update.message.reply_text(f"ROOM ID: {ROOM_ID}")
+
+    if cmd[0] == "start":
+        await SERVICE.start_vote(str(update.effective_user.id))
+
+    if cmd[0] in {"like", "dislike"}:
+        is_liked = (cmd[0] == "like")
+        next = await SERVICE.vote(str(update.effective_user.id), is_liked, "")
+
+        await update.message.reply_text(next)
+
+    await update.message.reply_text(text)
 
 
 def main() -> None:
-    global config
-    config = {
+    global CONFIG, SERVICE
+    CONFIG = {
         **dotenv.dotenv_values(".env"),
         **os.environ,
     }
 
+    loop = asyncio.new_event_loop()
+    SERVICE = loop.run_until_complete(service.get_service(CONFIG))
+
     """Start the bot."""
     # Create the Application and pass it your bot's token.
-    application = Application.builder().token(config["BOT_TOKEN"]).build()
+    application = Application.builder().token(CONFIG["BOT_TOKEN"]).build()
 
     # on different commands - answer in Telegram
     application.add_handler(CommandHandler("start", start))
