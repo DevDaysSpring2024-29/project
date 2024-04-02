@@ -28,13 +28,18 @@ class Service(interface.ServiceInterface):
         return await super().start_vote(user_id)
 
     async def vote(self, user_id: str, is_liked: bool, option_name: str) -> entry.ProviderEntry:
-        provider = self.providers[providers.ProviderKind.KINOPOISK]
+        # just for test print film name or restaurant name randomly
+        kind: str = providers.ProviderKind.KINOPOISK
+        if random.randint(0, 1):
+            kind = providers.ProviderKind.RESTAURANTS
+
+        provider = self.providers[kind]
         params = providers.ProviderParams(filters={}, exclude_names=[])
         entries = await provider.get_entries(params)
 
         entry = random.choice(entries)
         test_value = await self.storage.get("test")
 
-        entry["name"] += test_value.decode()
+        entry["name"] += test_value.decode() if test_value else ""
 
         return entry

@@ -17,3 +17,4 @@ class ProviderInterface(typing.Protocol):
 class ProviderKind(enum.StrEnum):
     DUMMY = "dummy"
     KINOPOISK = "kinopoisk"
+    RESTAURANTS = "restaurants"
