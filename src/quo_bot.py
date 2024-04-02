@@ -53,7 +53,7 @@ class QuoBot:
 
     @handler_type.command
     async def start(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
-        buttons = list(self.__button_map["start"].keys())
+        buttons = [[button_option for button_option in self.__button_map["start"].keys()]]
         reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
 
         await context.bot.send_message(chat_id=update.effective_chat.id,
