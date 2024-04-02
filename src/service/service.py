@@ -44,6 +44,7 @@ EMPTY_ROOM = {
 }
 
 ROOM_KEY_TEMPLATE = "room:{room_id}"
+ROOM_LOCK_TEMPLATE = "room-lock:{room_id}"
 
 USER_KEY_TEMPLATE = "user:{user_id}"
 
@@ -84,11 +85,10 @@ class Service(interface.ServiceInterface):
 
     async def join_room(self, user_id: str, room_id: int, callback: interface.CallbackType) -> None:
         """Will be called then voting is started and is finished and room is closed. Active only is voting is not started"""
-        # Redis lock <room_id>
         room_data = await self._load_room(room_id)
-        self._add_user_to_room(room_data, user_id, callback)
-        await self._store_room(room_id, room_data)
-        # Redis unlock <room_id>
+        async with self.storage_.lock(ROOM_LOCK_TEMPLATE.format(room_id = room_id)) as lock:
+            self._add_user_to_room(room_data, user_id, callback)
+            await self._store_room(room_id, room_data)
 
     async def set_entries(self, user_id: str, room_id: int, entries: typing.List[entry.ProviderEntry]) -> None:
         return await super().set_entries(user_id, room_id, entries)
@@ -120,17 +120,16 @@ class Service(interface.ServiceInterface):
 
     async def vote(self, user_id: str, is_liked: bool, _: str) -> entry.ProviderEntry:
         """Returns next option"""
-        # Redis lock <room_id>
         room_id = await self._get_users_room(user_id)
-        room_data = await self._load_room(room_id)
-        if not room_data["vote_started"]:
-            raise Exception("MAKE IT STOP MAKE IT STOP")
-        user_index = self._get_user_index(user_id, room_data)
-        if is_liked:
-            await self._like_option(user_index, room_data)
-        await self._store_room(room_id, room_data)
-        return self._progress_user(user_index, room_data)
-        # Redis unlock <room_id>
+        async with self.storage_.lock(ROOM_LOCK_TEMPLATE.format(room_id = room_id)) as lock:
+            room_data = await self._load_room(room_id)
+            if not room_data["vote_started"]:
+                raise Exception("MAKE IT STOP MAKE IT STOP")
+            user_index = self._get_user_index(user_id, room_data)
+            if is_liked:
+                await self._like_option(user_index, room_data)
+            await self._store_room(room_id, room_data)
+            return self._progress_user(user_index, room_data)
 
     def _get_user_index(self, user_id: str, room_data: RoomData) -> int:
         return room_data["participants"].index(user_id)
