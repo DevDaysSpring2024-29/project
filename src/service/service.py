@@ -103,6 +103,15 @@ class Service(interface.ServiceInterface):
         room_data["options_orders"] = {i: get_shuffled() for i in range(len(room_data["participants"]))}
         await self._store_room(room_id, room_data)
 
+        await asyncio.gather(
+            *(
+                callback(room_data["options"][
+                    self._get_user_current_option_index(i, room_data)
+                ], False)
+                for i, callback in enumerate(room_data["participants_callbacks"])
+            )
+        )
+
     async def vote(self, user_id: str, is_liked: bool, _: str) -> entry.ProviderEntry:
         """Returns next option"""
         # Redis lock <room_id>
@@ -112,7 +121,7 @@ class Service(interface.ServiceInterface):
             raise Exception("MAKE IT STOP MAKE IT STOP")
         user_index = self._get_user_index(user_id, room_data)
         if is_liked:
-            self._like_option(user_index, room_data)
+            await self._like_option(user_index, room_data)
         await self._store_room(room_id, room_data)
         return self._progress_user(user_index, room_data)
         # Redis unlock <room_id>
@@ -125,15 +134,15 @@ class Service(interface.ServiceInterface):
                 room_data["participants_positions"][user_index]
             ]
 
-    def _like_option(self, user_index: int, room_data: RoomData):
+    async def _like_option(self, user_index: int, room_data: RoomData):
         option_index = self._get_user_current_option_index(user_index, room_data)
         room_data["options_likes"][option_index] += 1
 
         if room_data["options_likes"][option_index] == len(room_data["participants"]):
             option = room_data["options"][option_index]
-            asyncio.gather(
+            await asyncio.gather(
                 *(
-                    callback(json.dumps(option), True)
+                    callback(option, True)
                     for callback in room_data["participants_callbacks"]
                 )
             )

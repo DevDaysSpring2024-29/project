@@ -67,8 +67,11 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text
     cmd = text.split(' ')
 
-    async def callback(x, _y):
-        logger.info("callback: " + x)
+    async def callback(x, is_match):
+        if is_match:
+            await context.bot.send_message(update.effective_chat.id, "match : " + x["name"])
+        else:
+            await context.bot.send_message(update.effective_chat.id, x["name"])
 
     if cmd[0] == "create":
         params = room.RoomParams(
@@ -88,9 +91,9 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         is_liked = (cmd[0] == "like")
         next = await SERVICE.vote(str(update.effective_user.id), is_liked, "")
 
-        await update.message.reply_text(next)
+        await update.message.reply_text(next["name"])
 
-    await update.message.reply_text(text)
+    await update.message.reply_text("echo cmd: " + text)
 
 
 def main() -> None:
