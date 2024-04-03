@@ -31,6 +31,9 @@ class RoomData(typing.TypedDict):
 
 EMPTY_ROOM = {
     "owner": None,
+    
+    "provider_name": None,
+    "filters": [],
 
     "participants": [],
     "participants_positions": [],
@@ -63,13 +66,9 @@ class Service(interface.ServiceInterface):
         room_data = self._create_empty_room()
         self._add_user_to_room(room_data, user_id, callback)
         self.users_[user_id] = room_id
-        provider = self.providers_.get(providers.ProviderKind[params["provider_name"]])
-        if not provider:
-            raise Exception("AAAAAAA")
-        options = await provider.get_entries({"filters": params["filters"], "exclude_names": []})
         room_data["owner"] = user_id
-        room_data["options"] = options
-        room_data["options_likes"] = [0] * len(options)
+        room_data["provider_name"] = params["provider_name"]
+        room_data["filter"] = params["filters"]
 
         logging.info(room_data)
 
@@ -91,6 +90,14 @@ class Service(interface.ServiceInterface):
         """Only owner of the room can call this"""
         room_id = await self._get_users_room(user_id)
         room_data = await self._load_room(room_id)
+        provider = self.providers_.get(providers.ProviderKind[room_data["provider_name"]])
+        if not provider:
+            raise Exception("AAAAAAA")
+        options = await provider.get_entries({"filters": room_data["filters"], "exclude_names": []})
+
+        room_data["options"] = options
+        room_data["options_likes"] = [0] * len(options)
+
         if room_data["vote_started"] is True or room_data["owner"] != user_id:
             raise Exception("OH GOD WHY PLEASE STOP I BEG YOU AAAAA")
         room_data["vote_started"] = True
