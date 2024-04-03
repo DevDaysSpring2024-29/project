@@ -20,3 +20,4 @@ class ProviderKind(enum.StrEnum):
     RESTAURANTS = "restaurants"
     COUNTRY = "country"
     CITY = "city"
+    CUSTOM = "custom"

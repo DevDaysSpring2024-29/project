@@ -16,8 +16,16 @@ class ServiceInterface(typing.Protocol):
         """Will be called then voting is started and is finished and room is closed. Active only is voting is not started"""
         ...
 
+    async def close_room(self, user_id: str, room_id: int) -> None:
+        """Will be called to close room when voting is finished"""
+        ...
+
     async def set_entries(self, user_id: str, room_id: int, entries: typing.List[entry.ProviderEntry]) -> None:
         """Will set custom list of entries"""
+        ...
+
+    async def add_entry(self, user_id: str, room_id: int, entry: entry.ProviderEntry) -> None:
+        """Will add custom entry"""
         ...
 
     async def start_vote(self, user_id: str) -> None:
