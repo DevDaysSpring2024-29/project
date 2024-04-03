@@ -43,6 +43,13 @@ EMPTY_ROOM = {
     "vote_started": False,
 }
 
+ROOM_KEY_TEMPLATE = "room:{room_id}"
+ROOM_LOCK_TEMPLATE = "room-lock:{room_id}"
+
+USER_KEY_TEMPLATE = "user:{user_id}"
+
+ROOM_ID_COUNTER = "room-id-counter"
+
 
 class Service(interface.ServiceInterface):
     providers_: dict[providers.ProviderKind, providers.ProviderInterface]
@@ -78,11 +85,10 @@ class Service(interface.ServiceInterface):
 
     async def join_room(self, user_id: str, room_id: int, callback: interface.CallbackType) -> None:
         """Will be called then voting is started and is finished and room is closed. Active only is voting is not started"""
-        # Redis lock <room_id>
         room_data = await self._load_room(room_id)
-        self._add_user_to_room(room_data, user_id, callback)
-        await self._store_room(room_id, room_data)
-        # Redis unlock <room_id>
+        async with self.storage_.lock(ROOM_LOCK_TEMPLATE.format(room_id = room_id)) as lock:
+            self._add_user_to_room(room_data, user_id, callback)
+            await self._store_room(room_id, room_data)
 
     async def set_entries(self, user_id: str, room_id: int, entries: typing.List[entry.ProviderEntry]) -> None:
         return await super().set_entries(user_id, room_id, entries)
@@ -114,17 +120,16 @@ class Service(interface.ServiceInterface):
 
     async def vote(self, user_id: str, is_liked: bool, _: str) -> entry.ProviderEntry:
         """Returns next option"""
-        # Redis lock <room_id>
         room_id = await self._get_users_room(user_id)
-        room_data = await self._load_room(room_id)
-        if not room_data["vote_started"]:
-            raise Exception("MAKE IT STOP MAKE IT STOP")
-        user_index = self._get_user_index(user_id, room_data)
-        if is_liked:
-            await self._like_option(user_index, room_data)
-        await self._store_room(room_id, room_data)
-        return self._progress_user(user_index, room_data)
-        # Redis unlock <room_id>
+        async with self.storage_.lock(ROOM_LOCK_TEMPLATE.format(room_id = room_id)) as lock:
+            room_data = await self._load_room(room_id)
+            if not room_data["vote_started"]:
+                raise Exception("MAKE IT STOP MAKE IT STOP")
+            user_index = self._get_user_index(user_id, room_data)
+            if is_liked:
+                await self._like_option(user_index, room_data)
+            await self._store_room(room_id, room_data)
+            return self._progress_user(user_index, room_data)
 
     def _get_user_index(self, user_id: str, room_data: RoomData) -> int:
         return room_data["participants"].index(user_id)
@@ -165,21 +170,22 @@ class Service(interface.ServiceInterface):
 
     # Add redis later for following methods (for now can be used with one worker)
     async def _assign_users_room(self, user_id: str, room_id: int):
-        self.users_[user_id] = room_id
-
-    async def _remove_room_users_room(self, user_id: str, room_id: int):
-        self.users_[user_id] = room_id
+        user_key = USER_KEY_TEMPLATE.format(user_id=user_id)
+        await self.storage_.set(user_key, room_id)
 
     async def _get_users_room(self, user_id: str) -> int:
-        return self.users_[user_id]
+        user_key = USER_KEY_TEMPLATE.format(user_id=user_id)
+        return typing.cast(int, await self.storage_.get(user_key))
 
     async def _load_room(self, room_id: int) -> RoomData:
-        return self.rooms_[room_id]
+        room_key = ROOM_KEY_TEMPLATE.format(room_id=room_id)
+        raw_room_data = typing.cast(bytes, await self.storage_.get(room_key))
+        return json.loads(raw_room_data.decode("utf-8"))
 
     async def _store_room(self, room_id: int, room_data: RoomData):
-        self.rooms_[room_id] = room_data
-
+        room_key = ROOM_KEY_TEMPLATE.format(room_id=room_id)
+        raw_room_data = json.dumps(room_data).encode("utf-8")
+        await self.storage_.set(room_key, raw_room_data)
+        
     async def _generate_room_id(self):
-        new_id = self.next_room_id_
-        self.next_room_id_ += 1
-        return new_id
+        return self.storage_.incr(ROOM_ID_COUNTER)
