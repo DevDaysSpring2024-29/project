@@ -9,16 +9,14 @@ from providers import interface as providers
 class RestaurantsProvider(providers.ProviderInterface):
     def __init__(self, overpass_url: str):
         self.overpass_url = overpass_url
-        self.query_template = '[out:json];node["amenity"="restaurant"](around:1000,{latitude},{longitude});out {limit};'
+        self.query_template = "[out:json];area[name='{city}']->.searchArea;node[amenity={amenity_type}](area.searchArea);out {limit};"
 
     async def get_entries(self, params: providers.ProviderParams) -> list[entry.ProviderEntry]:
         # TODO: remove hardcoded values
-        latitude: float = 55.751999
-        longitude: float = 37.617734
-        query: str = self.query_template.format(latitude=latitude, longitude=longitude, limit=20)
+        query: str = self.query_template.format(city='Москва', amenity_type='restaurant', limit=20)
         
         async with httpx.AsyncClient() as client:
-            r = await client.post(self.overpass_url, data=query)
+            r = await client.get(self.overpass_url, params={'data': query})
 
             data = r.json()
             return [
