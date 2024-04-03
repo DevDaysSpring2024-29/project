@@ -21,10 +21,13 @@ import os
 
 import dotenv
 
-from telegram import ForceReply, Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram import ForceReply, Update, User, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
+from telegram.ext.filters import TEXT
 
-import service
+import service as service_lib
+from service.service import Service
+from providers.interface import ProviderKind
 from models import room
 
 # Enable logging
@@ -42,58 +45,175 @@ SERVICE = None
 ROOM_ID = None
 
 
-# Define a few command handlers. These usually take the two arguments update and
-# context.
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a message when the command /start is issued."""
-    user = update.effective_user
-    await update.message.reply_html(
-        rf"Hi {user.mention_html()}!",
-        reply_markup=ForceReply(selective=True),
-    )
+# async def start(user: User, update: Update, context: ContextTypes.DEFAULT_TYPE):
+#     locations_keyboard = [
+#         [InlineKeyboardButton("Отлично!", callback_data=f"/not_in_room")],
+#     ]
+#     await context.bot.send_message(
+#         chat_id=update.effective_chat.id, 
+#         text=(f"Привет {user.name}"),
+#         reply_markup=InlineKeyboardMarkup(locations_keyboard),
+#     )
 
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a message when the command /help is issued."""
-    await update.message.reply_text("Help!")
+def generate_callback(bot: Bot, chat_id: int):
 
-
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Echo the user message."""
-
-    # TODO: store single service per server
-
-
-    text = update.message.text
-    cmd = text.split(' ')
-
-    async def callback(x, is_match):
-        if is_match:
-            await context.bot.send_message(update.effective_chat.id, "match : " + x["name"])
+    async def callback(option: str, is_finished: bool):
+        if is_finished:
+            locations_keyboard = [
+                [InlineKeyboardButton("Отлично!", callback_data=f"/not_in_room")],
+            ]
+            await bot.send_message(
+                chat_id=chat_id, 
+                text=(f"Победила опция {option}"),
+                reply_markup=InlineKeyboardMarkup(locations_keyboard),
+            )
         else:
-            await context.bot.send_message(update.effective_chat.id, x["name"])
+            locations_keyboard = [
+                [InlineKeyboardButton("Приступить", callback_data=f"/voting")],
+                [InlineKeyboardButton("Вернуться в главное меню", callback_data=f"/not_in_room")],
+            ]
+            await bot.send_message(
+                chat_id=chat_id, 
+                text=("Голосование началось"),
+                reply_markup=InlineKeyboardMarkup(locations_keyboard),
+            )
+    
+    return callback
 
-    if cmd[0] == "create":
-        params = room.RoomParams(
-            provider_name=cmd[1],
-            filters={},
+
+def not_in_room_handler(service: Service):
+
+    async def not_in_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        locations_keyboard = [
+            [InlineKeyboardButton("Создать комнату", callback_data=f"/create_room")],
+            [InlineKeyboardButton("Присоедититься к комнате", callback_data=f"/join_room")],
+        ]
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, 
+            text=("Вы не находитесь в комнате"),
+            reply_markup=InlineKeyboardMarkup(locations_keyboard),
         )
+    
+    return not_in_room
 
-        global ROOM_ID
-        ROOM_ID = await SERVICE.create_room(str(update.effective_user.id), params, callback)
 
-        await update.message.reply_text(f"ROOM ID: {ROOM_ID}")
+def create_room_handler(_: Service):
 
-    if cmd[0] == "start":
-        await SERVICE.start_vote(str(update.effective_user.id))
+    async def create_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        locations_keyboard = [
+            *([InlineKeyboardButton(option.value, callback_data=f"/choose_provider {option.value}")] for option in ProviderKind),
+            [InlineKeyboardButton("Вернуться в главное меню", callback_data=f"/not_in_room")],
+        ]
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, 
+            text=("Выберите провайдер"),
+            reply_markup=InlineKeyboardMarkup(locations_keyboard),
+        )
+    
+    return create_room
 
-    if cmd[0] in {"like", "dislike"}:
-        is_liked = (cmd[0] == "like")
-        next = await SERVICE.vote(str(update.effective_user.id), is_liked, "")
 
-        await update.message.reply_text(next["name"])
+def choose_provider_handler(service: Service, bot: Bot):
 
-    await update.message.reply_text("echo cmd: " + text)
+    async def choose_provider(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.callback_query.from_user
+        parsed_data = update.callback_query.data.split()
+        _, provider = parsed_data
+        locations_keyboard = [
+            [InlineKeyboardButton("Начать е голосование", callback_data=f"/start_vote")],
+            [InlineKeyboardButton("Вернуться в главное меню", callback_data=f"/not_in_room")],
+        ]
+        room_id = await service.create_room(user.id, {"provider_name": provider, "filters": {}}, generate_callback(bot, update.effective_chat.id))
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"Комната {room_id} создана",
+            reply_markup=InlineKeyboardMarkup(locations_keyboard),
+        )
+    
+    return choose_provider
+
+
+def start_vote_handler(service: Service):
+
+    async def start_vote(update: Update, _: ContextTypes.DEFAULT_TYPE):
+        user = update.callback_query.from_user
+        await service.start_vote(user.id)
+    
+    return start_vote
+
+
+def join_room_handler(_: Service):
+
+    async def join_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        locations_keyboard = [
+            [InlineKeyboardButton("Вернуться в главное меню", callback_data=f"/not_in_room")],
+        ]
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, 
+            text=("Введите номер комнаты:"),
+            reply_markup=InlineKeyboardMarkup(locations_keyboard),
+        )
+    
+    return join_room
+
+
+def message_handler(service: Service, bot: Bot):
+
+    async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        room_number = update.message.text
+        locations_keyboard = [
+            [InlineKeyboardButton("Вернуться в главное меню", callback_data=f"/not_in_room")],
+        ]
+        try:
+            room_number_int = int(room_number)
+        except:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id, 
+                text=("Неправильный номер комнаты, введите номер комнаты:"),
+                reply_markup=InlineKeyboardMarkup(locations_keyboard),
+            )
+            return
+
+        await service.join_room(user.id, room_number_int, generate_callback(bot, update.effective_chat.id))
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, 
+            text=("Ожидайте начало голосования"),
+            reply_markup=InlineKeyboardMarkup(locations_keyboard),
+        )
+    
+    return message
+
+
+def voting_handler(service: Service):
+
+    async def voting(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.callback_query.from_user
+        parsed_data = update.callback_query.data.split()
+        if len(parsed_data) == 2:
+            _, is_liked = parsed_data
+            try:
+                current_option = await service.vote(user.id, is_liked == "true", "kill me")
+            except:
+                return
+        else:
+            current_option = await service.current_option(user.id)
+
+        locations_keyboard = [
+            [
+                InlineKeyboardButton("Нравится", callback_data=f"/voting true"),
+                InlineKeyboardButton("Не нравится", callback_data=f"/voting false"),
+            ],
+            [InlineKeyboardButton("Вернуться в главное меню", callback_data=f"/not_in_room")],
+        ]
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, 
+            text=(current_option),
+            reply_markup=InlineKeyboardMarkup(locations_keyboard),
+        )
+    
+    return voting
 
 
 def main() -> None:
@@ -104,21 +224,24 @@ def main() -> None:
     }
 
     loop = asyncio.new_event_loop()
-    SERVICE = loop.run_until_complete(service.get_service(CONFIG))
+    SERVICE = loop.run_until_complete(service_lib.get_service(CONFIG))
 
     """Start the bot."""
     # Create the Application and pass it your bot's token.
     application = Application.builder().token(CONFIG["BOT_TOKEN"]).build()
 
-    # on different commands - answer in Telegram
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
+    # application.add_handler(CallbackQueryHandler(start, '/start', block=False))
+    application.add_handler(CallbackQueryHandler(not_in_room_handler(SERVICE), '/not_in_room', block=False))
+    application.add_handler(CallbackQueryHandler(join_room_handler(SERVICE), '/join_room', block=False))
+    application.add_handler(CallbackQueryHandler(create_room_handler(SERVICE), '/create_room', block=False))
+    application.add_handler(CallbackQueryHandler(start_vote_handler(SERVICE), '/start_vote', block=False))
 
-    # on non command i.e message - echo the message on Telegram
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    application.add_handler(CallbackQueryHandler(choose_provider_handler(SERVICE, application.bot), '/choose_provider.*', block=False))
+    application.add_handler(CallbackQueryHandler(voting_handler(SERVICE), '/voting.*', block=False))
 
-    # Run the bot until the user presses Ctrl-C
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.add_handler(MessageHandler(TEXT, message_handler(SERVICE, application.bot), block=False))
+
+    application.run_polling()
 
 
 if __name__ == "__main__":

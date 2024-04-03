@@ -47,7 +47,7 @@ EMPTY_ROOM = {
 class Service(interface.ServiceInterface):
     providers_: dict[providers.ProviderKind, providers.ProviderInterface]
     rooms_: dict[int, RoomData]  # room_id to RoomData mapping
-    users_: dict[str, int]  # user_id to room_id mapping
+    users_: dict[int, int]  # user_id to room_id mapping
     next_room_id_: int
 
     def __init__(self, storage: redis.Redis, providers: typing.Dict[providers.ProviderKind, providers.ProviderInterface]):
@@ -57,13 +57,13 @@ class Service(interface.ServiceInterface):
         self.users_ = dict()
         self.next_room_id_ = 0
 
-    async def create_room(self, user_id: str, params: room.RoomParams, callback: interface.CallbackType) -> int:
+    async def create_room(self, user_id: int, params: room.RoomParams, callback: interface.CallbackType) -> int:
         """Callback is called when people are joining group. And will be called then voting is started and is finished and room is closed"""
         room_id = await self._generate_room_id()
         room_data = self._create_empty_room()
         self._add_user_to_room(room_data, user_id, callback)
         self.users_[user_id] = room_id
-        provider = self.providers_.get(providers.ProviderKind[params["provider_name"]])
+        provider = self.providers_.get(providers.ProviderKind(params["provider_name"]))
         if not provider:
             raise Exception("AAAAAAA")
         options = await provider.get_entries({"filters": params["filters"], "exclude_names": []})
@@ -76,7 +76,7 @@ class Service(interface.ServiceInterface):
         await self._store_room(room_id, room_data)
         return room_id
 
-    async def join_room(self, user_id: str, room_id: int, callback: interface.CallbackType) -> None:
+    async def join_room(self, user_id: int, room_id: int, callback: interface.CallbackType) -> None:
         """Will be called then voting is started and is finished and room is closed. Active only is voting is not started"""
         # Redis lock <room_id>
         room_data = await self._load_room(room_id)
@@ -84,10 +84,10 @@ class Service(interface.ServiceInterface):
         await self._store_room(room_id, room_data)
         # Redis unlock <room_id>
 
-    async def set_entries(self, user_id: str, room_id: int, entries: typing.List[entry.ProviderEntry]) -> None:
+    async def set_entries(self, user_id: int, room_id: int, entries: typing.List[entry.ProviderEntry]) -> None:
         return await super().set_entries(user_id, room_id, entries)
 
-    async def start_vote(self, user_id: str) -> None:
+    async def start_vote(self, user_id: int) -> None:
         """Only owner of the room can call this"""
         room_id = await self._get_users_room(user_id)
         room_data = await self._load_room(room_id)
@@ -103,16 +103,27 @@ class Service(interface.ServiceInterface):
         room_data["options_orders"] = {i: get_shuffled() for i in range(len(room_data["participants"]))}
         await self._store_room(room_id, room_data)
 
-        await asyncio.gather(
-            *(
-                callback(room_data["options"][
-                    self._get_user_current_option_index(i, room_data)
-                ], False)
-                for i, callback in enumerate(room_data["participants_callbacks"])
-            )
-        )
+        # await asyncio.gather(
+        #     *(
+        #         callback(room_data["options"][
+        #             self._get_user_current_option_index(i, room_data)
+        #         ], False)
+        #         for i, callback in enumerate(room_data["participants_callbacks"])
+        #     )
+        # )
 
-    async def vote(self, user_id: str, is_liked: bool, _: str) -> entry.ProviderEntry:
+        for callback in room_data["participants_callbacks"]:
+            await callback("", False)
+
+    async def current_option(self, user_id: int) -> entry.ProviderEntry:
+        """Returns next option"""
+        room_id = await self._get_users_room(user_id)
+        room_data = await self._load_room(room_id)
+        user_index = self._get_user_index(user_id, room_data)
+        option_index = self._get_user_current_option_index(user_index, room_data)
+        return room_data["options"][option_index]
+
+    async def vote(self, user_id: int, is_liked: bool, _: str) -> entry.ProviderEntry:
         """Returns next option"""
         # Redis lock <room_id>
         room_id = await self._get_users_room(user_id)
@@ -126,7 +137,7 @@ class Service(interface.ServiceInterface):
         return self._progress_user(user_index, room_data)
         # Redis unlock <room_id>
 
-    def _get_user_index(self, user_id: str, room_data: RoomData) -> int:
+    def _get_user_index(self, user_id: int, room_data: RoomData) -> int:
         return room_data["participants"].index(user_id)
 
     def _get_user_current_option_index(self, user_index: int, room_data: RoomData) -> int:
@@ -140,12 +151,15 @@ class Service(interface.ServiceInterface):
 
         if room_data["options_likes"][option_index] == len(room_data["participants"]):
             option = room_data["options"][option_index]
-            await asyncio.gather(
-                *(
-                    callback(option, True)
-                    for callback in room_data["participants_callbacks"]
-                )
-            )
+            # await asyncio.gather(
+            #     *(
+            #         callback(option, True)
+            #         for callback in room_data["participants_callbacks"]
+            #     )
+            # )
+            for callback in room_data["participants_callbacks"]:
+                await callback(option, True)
+            raise Exception("gjfdklpshjplskdjh")
 
     def _progress_user(self, user_index: int, room_data: RoomData) -> entry.ProviderEntry:
         # To-do: check if reached final option and load more
@@ -164,13 +178,13 @@ class Service(interface.ServiceInterface):
         room_data["participants_callbacks"].append(callback)
 
     # Add redis later for following methods (for now can be used with one worker)
-    async def _assign_users_room(self, user_id: str, room_id: int):
+    async def _assign_users_room(self, user_id: int, room_id: int):
         self.users_[user_id] = room_id
 
-    async def _remove_room_users_room(self, user_id: str, room_id: int):
+    async def _remove_room_users_room(self, user_id: int, room_id: int):
         self.users_[user_id] = room_id
 
-    async def _get_users_room(self, user_id: str) -> int:
+    async def _get_users_room(self, user_id: int) -> int:
         return self.users_[user_id]
 
     async def _load_room(self, room_id: int) -> RoomData:

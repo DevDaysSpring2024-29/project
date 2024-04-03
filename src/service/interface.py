@@ -27,3 +27,6 @@ class ServiceInterface(typing.Protocol):
     async def vote(self, user_id: str, is_liked: bool, option_name: str) -> entry.ProviderEntry:
         """Returns next option"""
         ...
+    
+    async def current_option(self, user_id: int) -> entry.ProviderEntry:
+        ...
