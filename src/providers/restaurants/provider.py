@@ -10,6 +10,7 @@ class RestaurantsProvider(providers.ProviderInterface):
     def __init__(self, overpass_url: str):
         self.overpass_url = overpass_url
         self.query_template = "[out:json];area[name='{city}']->.searchArea;node[amenity={amenity_type}](area.searchArea);out {limit};"
+        self.ref_template = "https://maps.yandex.ru/?text={lat}+{lng}"
 
     async def get_entries(self, params: providers.ProviderParams) -> list[entry.ProviderEntry]:
         # TODO: remove hardcoded values
@@ -22,7 +23,7 @@ class RestaurantsProvider(providers.ProviderInterface):
             return [
                 entry.ProviderEntry(
                     name=element['tags']['name'],
-                    descr=None,
+                    descr=self.ref_template.format(lat=element['lat'], lng=element['lon']),
                     rating=None,
                     price=None,
                     picture_url=None,
