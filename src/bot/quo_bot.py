@@ -141,16 +141,7 @@ class QuoBot:
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text="Joined room {}".format(room_id))
 
-        buttons = [[button_option for button_option in self.__button_map["vote"].keys()]]
-        reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
-
-        user_id = update.effective_user.id
-        curr_option = await self.__service.current_option(str(user_id))
-
-        await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="What do you think about\n{}?".format(curr_option["name"]),
-                                       reply_markup=reply_markup)
-        return QuoBotState.WAITING_FOR_VOTE
+        return await self.next_vote(update, context)
 
     @handler_type.command
     async def host_room(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
@@ -164,6 +155,24 @@ class QuoBot:
     @staticmethod
     async def callback_alarm(context: CallbackContext):
         context.bot.send_message(chat_id=id, text='Hi, This is a daily reminder')
+
+
+    async def next_vote(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
+        buttons = [[button_option for button_option in self.__button_map["vote"].keys()]]
+        reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
+
+        user_id = update.effective_user.id
+        curr_option = await self.__service.current_option(str(user_id))
+
+        query_text = "What do you think about\n{}?".format(curr_option["name"])
+        if curr_option["descr"]:
+            query_text += "\n{}".format(curr_option["descr"])
+
+        await context.bot.send_message(chat_id=update.effective_chat.id,
+                                       text=query_text,
+                                       reply_markup=reply_markup)
+        return QuoBotState.WAITING_FOR_VOTE
+
 
     async def choose_service_type(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         provider_name = update.message.text
@@ -179,30 +188,12 @@ class QuoBot:
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text="Room Created! ID: {}".format(room_id))
 
-        buttons = [[button_option for button_option in self.__button_map["vote"].keys()]]
-        reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
-
-        user_id = update.effective_user.id
-        curr_option = await self.__service.current_option(str(user_id))
-
-        await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="What do you think about\n{}?".format(curr_option["name"]),
-                                       reply_markup=reply_markup)
-        return QuoBotState.WAITING_FOR_VOTE
+        return await self.next_vote(update, context)
 
     @handler_type.command
     async def vote_start(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         logging.info("vote start")
-        buttons = [[button_option for button_option in self.__button_map["vote"].keys()]]
-        reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
-
-        user_id = update.effective_user.id
-        curr_option = await self.__service.current_option(str(user_id))
-
-        await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="What do you think about\n{}?".format(curr_option["name"]),
-                                       reply_markup=reply_markup)
-        return QuoBotState.WAITING_FOR_VOTE
+        return await self.next_vote(update, context)
 
     @handler_type.command
     async def vote(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
@@ -219,13 +210,4 @@ class QuoBot:
             return None
 
         logging.info("vote start")
-        buttons = [[button_option for button_option in self.__button_map["vote"].keys()]]
-        reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
-
-        user_id = update.effective_user.id
-        curr_option = await self.__service.current_option(str(user_id))
-
-        await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="What do you think about\n{}?".format(curr_option["name"]),
-                                       reply_markup=reply_markup)
-        return QuoBotState.WAITING_FOR_VOTE
+        return await self.next_vote(update, context)
