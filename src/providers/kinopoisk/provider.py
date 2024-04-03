@@ -22,7 +22,7 @@ class KinopoiskProvider(providers.ProviderInterface):
             return [
                 entry.ProviderEntry(
                     name=item["nameRu"],
-                    descr=None,
+                    descr=item["webUrl"],
                     rating=None,
                     price=None,
                     picture_url=None,
