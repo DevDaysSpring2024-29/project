@@ -25,9 +25,12 @@ class RoomData(typing.TypedDict):
     options_likes: dict[int, set[str]]  # sizeof == sizeof options
     options_orders: dict[int, list[int]]  # for every key: sizeof value == sizeof options
 
+    match: typing.Optional[entry.ProviderEntry]
+
 
 EMPTY_ROOM = {
     "owner": None,
+    "match": None,
 
     "participants": [],
     "participants_positions": [],
@@ -50,9 +53,6 @@ class Service(interface.ServiceInterface):
         self.rooms_ = dict()
         self.users_ = dict()
         self.next_room_id_ = 0
-
-    async def get_notifications(self, user_id: str, room_id: str) -> typing.List[interface.ServiceNotification]:
-        return []
 
     async def create_room(self, user_id: str, params: room.RoomParams) -> int:
         """Callback is called when people are joining group. And will be called then voting is started and is finished and room is closed"""
@@ -90,17 +90,19 @@ class Service(interface.ServiceInterface):
         return room_data["options"][self._get_user_current_option_index(user_index, room_data)]
         # Redis unlock <room_id>
 
-    async def vote(self, user_id: str, is_liked: bool) -> typing.Optional[entry.ProviderEntry]:
+    async def get_match(self, user_id: str) -> typing.Optional[entry.ProviderEntry]:
+        room_id = await self._get_users_room(user_id)
+        room_data = await self._load_room(room_id)
+        return room_data["match"]
+
+    async def vote(self, user_id: str, is_liked: bool):
         room_id = await self._get_users_room(user_id)
         room_data = await self._load_room(room_id)
         user_index = self._get_user_index(user_id, room_data)
-        match = None
         if is_liked:
-            match = await self._like_option(user_index, room_data)
+            await self._like_option(user_index, room_data)
         self._progress_user(user_index, room_data)
         await self._store_room(room_id, room_data)
-        if match:
-            return match
         # Redis unlock <room_id>
 
     def _get_user_index(self, user_id: str, room_data: RoomData) -> int:
@@ -111,16 +113,14 @@ class Service(interface.ServiceInterface):
             room_data["participants_positions"][user_index]
         ]
 
-    async def _like_option(self, user_index: int, room_data: RoomData) -> typing.Optional[entry.ProviderEntry]:
+    async def _like_option(self, user_index: int, room_data: RoomData):
         option_index = self._get_user_current_option_index(user_index, room_data)
         room_data["options_likes"][option_index].add(room_data["participants"][user_index])
 
-        if len(room_data["options_likes"][option_index]) == len(room_data["participants"]):
+        if len(room_data["options_likes"][option_index]) == len(room_data["participants"]) and room_data["match"] is None:
             option = room_data["options"][option_index]
             logging.info("match: " + option["name"])
-            return option
-
-        return None
+            room_data["match"] = option
 
     def _progress_user(self, user_index: int, room_data: RoomData):
         # To-do: check if reached final option and load more

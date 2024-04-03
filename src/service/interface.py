@@ -1,20 +1,7 @@
-import enum
 import typing
 
 from models import room
 from models import entry
-
-
-class ServiceNotificationKind(enum.Enum):
-    MATCH = enum.auto()
-    JOINED = enum.auto()
-    LEFT = enum.auto()
-
-
-class ServiceNotification(typing.TypedDict):
-    kind: ServiceNotificationKind
-    data: typing.Dict[str, str]
-
 
 
 class ServiceInterface(typing.Protocol):
@@ -26,12 +13,11 @@ class ServiceInterface(typing.Protocol):
         """Will be called then voting is started and is finished and room is closed. Active only is voting is not started"""
         ...
 
-
-    async def get_notifications(self, user_id: str, room_id: str) -> typing.List[ServiceNotification]:
-        ...
-
     async def current_option(self, user_id: str) -> entry.ProviderEntry:
         ...
 
-    async def vote(self, user_id: str, is_liked: bool) -> typing.Optional[entry.ProviderEntry]:
+    async def get_match(self, user_id: str) -> typing.Optional[entry.ProviderEntry]:
+        ...
+
+    async def vote(self, user_id: str, is_liked: bool):
         ...

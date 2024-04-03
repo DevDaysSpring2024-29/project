@@ -9,7 +9,7 @@ from service.interface import ServiceInterface
 from providers.interface import ProviderKind
 
 from telegram import ReplyKeyboardMarkup
-from telegram.ext import Application, ContextTypes
+from telegram.ext import Application, CallbackContext, ContextTypes
 from telegram.ext import CommandHandler, MessageHandler, ConversationHandler
 from telegram.ext import filters
 
@@ -161,6 +161,10 @@ class QuoBot:
                                        reply_markup=reply_markup)
         return QuoBotState.CHOOSE_HOST_SERVICE_TYPE
 
+    @staticmethod
+    async def callback_alarm(context: CallbackContext):
+        context.bot.send_message(chat_id=id, text='Hi, This is a daily reminder')
+
     async def choose_service_type(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         provider_name = update.message.text
         user_id = update.effective_user.id
@@ -206,8 +210,9 @@ class QuoBot:
         user_id = update.effective_user.id
 
         is_liked = (vote_response == "Like")
-        got_match = await self.__service.vote(str(user_id), is_liked)
+        await self.__service.vote(str(user_id), is_liked)
 
+        got_match = await self.__service.get_match(str(user_id))
         if got_match:
             await context.bot.send_message(chat_id=update.effective_chat.id,
                                            text="You've got a match: {}!".format(got_match["name"]))
