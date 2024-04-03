@@ -120,7 +120,7 @@ class Service(interface.ServiceInterface):
             if len(room_data["options"]) == 0:
                  raise Exception("WHERE'S VOTES LOBOWSKI????")
 
-        room_data["options_likes"] = [0] * len(room_data["options"])
+        room_data["options_likes"] = [set()] * len(room_data["options"])
 
         if room_data["vote_started"] is True or room_data["owner"] != user_id:
             raise Exception("OH GOD WHY PLEASE STOP I BEG YOU AAAAA")
@@ -147,9 +147,9 @@ class Service(interface.ServiceInterface):
             raise Exception("MAKE IT STOP MAKE IT STOP")
         user_index = self._get_user_index(user_id, room_data)
         if is_liked:
-            await self._like_option(user_index, room_data)
+            await self._like_option(user_index, room_data, user_id)
         await self._store_room(room_id, room_data)
-        return self._progress_user(user_index, room_data)
+        return self._progress_user(user_index, room_data, user_id)
         # Redis unlock <room_id>
 
     def _get_user_index(self, user_id: str, room_data: RoomData) -> int:
@@ -160,11 +160,11 @@ class Service(interface.ServiceInterface):
                 room_data["participants_positions"][user_index]
             ]
 
-    async def _like_option(self, user_index: int, room_data: RoomData):
+    async def _like_option(self, user_index: int, room_data: RoomData, user_id: str):
         option_index = self._get_user_current_option_index(user_index, room_data)
-        room_data["options_likes"][option_index] += 1
+        room_data["options_likes"][option_index].add(user_id)
 
-        if room_data["options_likes"][option_index] == len(room_data["participants"]):
+        if len(room_data["options_likes"][option_index]) == len(room_data["participants"]):
             option = room_data["options"][option_index]
             await asyncio.gather(
                 *(
@@ -173,15 +173,17 @@ class Service(interface.ServiceInterface):
                 )
             )
 
-    def _progress_user(self, user_index: int, room_data: RoomData) -> entry.ProviderEntry:
+    def _progress_user(self, user_index: int, room_data: RoomData, user_id: str) -> entry.ProviderEntry:
         # To-do: check if reached final option and load more
         room_data["participants_positions"][user_index] += 1
 
         # if no options left then reshuffle them and give again
         if room_data["participants_positions"][user_index] == len(room_data["options_orders"][user_index]):
             room_data["participants_positions"][user_index] = 0
-            # also zeroize likes for options
-            room_data["options_likes"] = [0] * len(room_data["options"])
+            # also remove all likes for user
+            for set_of_likes in room_data["options_likes"]:
+                if user_id in set_of_likes:
+                    set_of_likes.remove(user_id)
             room_data["options_orders"][user_index] = self._reshuffle_options(room_data)
 
         return room_data["options"][
