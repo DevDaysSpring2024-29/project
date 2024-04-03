@@ -24,6 +24,8 @@ class ServiceInterface(typing.Protocol):
         """Only owner of the room can call this"""
         ...
 
-    async def vote(self, user_id: str, is_liked: bool, option_name: str) -> entry.ProviderEntry:
-        """Returns next option"""
+    async def current_option(self, user_id: str) -> entry.ProviderEntry:
+        ...
+
+    async def vote(self, user_id: str, is_liked: bool) -> None:
         ...

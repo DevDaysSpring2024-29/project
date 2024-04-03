@@ -112,9 +112,16 @@ class Service(interface.ServiceInterface):
             )
         )
 
-    async def vote(self, user_id: str, is_liked: bool, _: str) -> entry.ProviderEntry:
-        """Returns next option"""
-        # Redis lock <room_id>
+    async def current_option(self, user_id: str) -> entry.ProviderEntry:
+        room_id = await self._get_users_room(user_id)
+        room_data = await self._load_room(room_id)
+        if not room_data["vote_started"]:
+            raise Exception("MAKE IT STOP MAKE IT STOP")
+        user_index = self._get_user_index(user_id, room_data)
+        return self._progress_user(user_index, room_data)
+        # Redis unlock <room_id>
+
+    async def vote(self, user_id: str, is_liked: bool) -> None:
         room_id = await self._get_users_room(user_id)
         room_data = await self._load_room(room_id)
         if not room_data["vote_started"]:
@@ -123,7 +130,6 @@ class Service(interface.ServiceInterface):
         if is_liked:
             await self._like_option(user_index, room_data)
         await self._store_room(room_id, room_data)
-        return self._progress_user(user_index, room_data)
         # Redis unlock <room_id>
 
     def _get_user_index(self, user_id: str, room_data: RoomData) -> int:
