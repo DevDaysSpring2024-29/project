@@ -72,7 +72,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if is_match:
             await context.bot.send_message(update.effective_chat.id, "match : " + x["name"])
             # To test unlimited options comment line below
-            await SERVICE.join_room(str(update.effective_user.id), ROOM_ID)
+            await SERVICE.close_room(str(update.effective_user.id), ROOM_ID)
         else:
             await context.bot.send_message(update.effective_chat.id, x["name"])
 

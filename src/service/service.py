@@ -76,8 +76,16 @@ class Service(interface.ServiceInterface):
         await self._store_room(room_id, room_data)
         return room_id
 
-    async def join_room(self, user_id: str, room_id: int) -> None:
+    async def join_room(self, user_id: str, room_id: int, callback: interface.CallbackType) -> None:
         """Will be called then voting is started and is finished and room is closed. Active only is voting is not started"""
+        # Redis lock <room_id>
+        room_data = await self._load_room(room_id)
+        self._add_user_to_room(room_data, user_id, callback)
+        await self._store_room(room_id, room_data)
+        # Redis unlock <room_id>
+
+    async def close_room(self, user_id: str, room_id: int) -> None:
+        """Will be called to close room when voting is finished"""
         # Redis lock <room_id>
         await self._remove_users_room(user_id, room_id)
         # Redis unlock <room_id>
