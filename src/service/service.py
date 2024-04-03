@@ -126,7 +126,7 @@ class Service(interface.ServiceInterface):
             raise Exception("OH GOD WHY PLEASE STOP I BEG YOU AAAAA")
         room_data["vote_started"] = True
 
-        self._reorder_options_order(room_data)
+        room_data["options_orders"] = {i: self._reshuffle_options(room_data) for i in range(len(room_data["participants"]))}
         await self._store_room(room_id, room_data)
 
         await asyncio.gather(
@@ -180,9 +180,9 @@ class Service(interface.ServiceInterface):
         # if no options left then reshuffle them and give again
         if room_data["participants_positions"][user_index] == len(room_data["options_orders"][user_index]):
             room_data["participants_positions"][user_index] = 0
-            # also zeroize likes of option
+            # also zeroize likes for options
             room_data["options_likes"] = [0] * len(room_data["options"])
-            self._reorder_options_order(room_data)
+            room_data["options_orders"][user_index] = self._reshuffle_options(room_data)
 
         return room_data["options"][
             self._get_user_current_option_index(user_index, room_data)
@@ -218,7 +218,7 @@ class Service(interface.ServiceInterface):
         self.next_room_id_ += 1
         return new_id
     
-    def _reorder_options_order(self, room_data: RoomData) -> None:
+    def _reshuffle_options(self, room_data: RoomData) -> list:
         def divide_chunks(l, n):
             for i in range(0, len(l), n):
                 yield l[i:i + n]
@@ -228,5 +228,5 @@ class Service(interface.ServiceInterface):
             chunks = [random.shuffle(chunk) or chunk for chunk in divide_chunks(indexes, 4)]
             indexes = list(itertools.chain.from_iterable(chunks))
             return indexes
-
-        room_data["options_orders"] = {i: get_shuffled() for i in range(len(room_data["participants"]))}
+        
+        return get_shuffled()
