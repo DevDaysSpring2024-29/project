@@ -85,18 +85,35 @@ class Service(interface.ServiceInterface):
 
     async def set_entries(self, user_id: str, room_id: int, entries: typing.List[entry.ProviderEntry]) -> None:
         return await super().set_entries(user_id, room_id, entries)
+    
+    async def add_entry(self, user_id: str, room_id: int, entry: entry.ProviderEntry) -> None:
+        """Will add custom entry"""
+        # Redis lock <room_id>
+        room_id = await self._get_users_room(user_id)
+        room_data = await self._load_room(room_id)
+        if room_data["vote_started"] is True or room_data["owner"] != user_id:
+            raise Exception("A? A? A? A? A? A? A? A? A? A? A? A? A? A? A? A?")
+        room_data["options"].append(entry)
+        await self._store_room(room_id, room_data)
+        # Redis unlock <room_id>
 
     async def start_vote(self, user_id: str) -> None:
         """Only owner of the room can call this"""
         room_id = await self._get_users_room(user_id)
         room_data = await self._load_room(room_id)
-        provider = self.providers_.get(providers.ProviderKind[room_data["provider_name"]])
-        if not provider:
-            raise Exception("AAAAAAA")
-        options = await provider.get_entries({"filters": room_data["filters"], "exclude_names": []})
+        if providers.ProviderKind[room_data["provider_name"]] != providers.ProviderKind.CUSTOM:
+            provider = self.providers_.get(providers.ProviderKind[room_data["provider_name"]])
+            if not provider:
+                raise Exception("AAAAAAA")
+            options = await provider.get_entries({"filters": room_data["filters"], "exclude_names": []})
 
-        room_data["options"] = options
-        room_data["options_likes"] = [0] * len(options)
+            room_data["options"] = options
+        else:
+            # All options should be already set
+            if len(room_data["options"]) == 0:
+                 raise Exception("WHERE'S VOTES LOBOWSKI????")
+
+        room_data["options_likes"] = [0] * len(room_data["options"])
 
         if room_data["vote_started"] is True or room_data["owner"] != user_id:
             raise Exception("OH GOD WHY PLEASE STOP I BEG YOU AAAAA")

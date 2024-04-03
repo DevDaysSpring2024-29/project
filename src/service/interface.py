@@ -20,6 +20,10 @@ class ServiceInterface(typing.Protocol):
         """Will set custom list of entries"""
         ...
 
+    async def add_entry(self, user_id: str, room_id: int, entry: entry.ProviderEntry) -> None:
+        """Will add custom entry"""
+        ...
+
     async def start_vote(self, user_id: str) -> None:
         """Only owner of the room can call this"""
         ...

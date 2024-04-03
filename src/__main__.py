@@ -26,6 +26,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 
 import service
 from models import room
+from models import entry
 
 # Enable logging
 logging.basicConfig(
@@ -86,6 +87,14 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if cmd[0] == "start":
         await SERVICE.start_vote(str(update.effective_user.id))
+
+    if cmd[0] == "add":
+        option = entry.ProviderEntry(
+            name=cmd[1],
+        )
+
+        await SERVICE.add_entry(str(update.effective_user.id), ROOM_ID, option)
+        await update.message.reply_text(f"Added: {cmd[1]}")
 
     if cmd[0] in {"like", "dislike"}:
         is_liked = (cmd[0] == "like")
