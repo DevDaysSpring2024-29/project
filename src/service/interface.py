@@ -12,7 +12,7 @@ class ServiceInterface(typing.Protocol):
         """Callback is called when people are joining group. And will be called then voting is started and is finished and room is closed"""
         ...
 
-    async def join_room(self, user_id: str, room_id: int, callback: CallbackType) -> None:
+    async def join_room(self, user_id: str, room_id: int) -> None:
         """Will be called then voting is started and is finished and room is closed. Active only is voting is not started"""
         ...
 
