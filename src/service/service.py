@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import itertools
 import json
 from logging import log
 import logging
@@ -67,6 +68,7 @@ class Service(interface.ServiceInterface):
         if not provider:
             raise Exception("AAAAAAA")
         options = await provider.get_entries({"filters": params["filters"], "exclude_names": []})
+        random.shuffle(options)
         room_data["owner"] = user_id
         room_data["options"] = options
         room_data["options_likes"] = [0] * len(options)
@@ -80,7 +82,16 @@ class Service(interface.ServiceInterface):
         """Will be called then voting is started and is finished and room is closed. Active only is voting is not started"""
         # Redis lock <room_id>
         room_data = await self._load_room(room_id)
+
+        await asyncio.gather(
+            *(
+                callback({"name": f"{user_id} joined"}, False)
+                for i, callback in enumerate(room_data["participants_callbacks"])
+            )
+        )
+
         self._add_user_to_room(room_data, user_id, callback)
+        self.users_[user_id] = room_id
         await self._store_room(room_id, room_data)
         # Redis unlock <room_id>
 
@@ -95,13 +106,25 @@ class Service(interface.ServiceInterface):
             raise Exception("OH GOD WHY PLEASE STOP I BEG YOU AAAAA")
         room_data["vote_started"] = True
 
+        def divide_chunks(l, n):
+            for i in range(0, len(l), n):
+                yield l[i:i + n]
+
         def get_shuffled():
             indexes = list(range(len(room_data["options"])))
-            random.shuffle(indexes)
+            chunks = [random.shuffle(chunk) or chunk for chunk in divide_chunks(indexes, 4)]
+            indexes = list(itertools.chain.from_iterable(chunks))
             return indexes
 
         room_data["options_orders"] = {i: get_shuffled() for i in range(len(room_data["participants"]))}
         await self._store_room(room_id, room_data)
+
+        await asyncio.gather(
+            *(
+                callback({"name": f"voting started"}, False)
+                for i, callback in enumerate(room_data["participants_callbacks"])
+            )
+        )
 
         await asyncio.gather(
             *(

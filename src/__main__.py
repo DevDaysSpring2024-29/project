@@ -63,6 +63,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # TODO: store single service per server
 
+    global ROOM_ID
 
     text = update.message.text
     cmd = text.split(' ')
@@ -79,10 +80,14 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             filters={},
         )
 
-        global ROOM_ID
         ROOM_ID = await SERVICE.create_room(str(update.effective_user.id), params, callback)
 
         await update.message.reply_text(f"ROOM ID: {ROOM_ID}")
+
+    if cmd[0] == "join":
+        ROOM_ID = int(cmd[1])
+        await SERVICE.join_room(str(update.effective_user.id), ROOM_ID, callback)
+        await update.message.reply_text("joined room " + str(ROOM_ID))
 
     if cmd[0] == "start":
         await SERVICE.start_vote(str(update.effective_user.id))
@@ -93,7 +98,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         await update.message.reply_text(next["name"])
 
-    await update.message.reply_text("echo cmd: " + text)
+    # await update.message.reply_text("echo cmd: " + text)
 
 
 def main() -> None:
