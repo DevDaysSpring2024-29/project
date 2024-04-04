@@ -13,14 +13,17 @@ class ServiceInterface(typing.Protocol):
         """Will be called then voting is started and is finished and room is closed. Active only is voting is not started"""
         ...
 
-    async def current_option(self, user_id: str) -> entry.ProviderEntry:
+    async def current_option(self, user_id: str) -> typing.Tuple[entry.ProviderEntry, typing.Optional[entry.ProviderEntry]]:
         ...
 
     async def get_match(self, user_id: str) -> typing.Optional[entry.ProviderEntry]:
         ...
 
-    async def add_entry(self, user_id: str, room_id: int, entry: entry.ProviderEntry) -> None:
+    async def add_entry(self, user_id: str, entry: entry.ProviderEntry) -> None:
         """Will add custom entry"""
+        ...
+
+    async def wait_start(self, user_id: str) -> None:
         ...
 
     async def start_vote(self, user_id: str) -> None:

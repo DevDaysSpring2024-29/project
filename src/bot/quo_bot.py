@@ -1,10 +1,9 @@
 import logging
 import telegram
-import functools
 import enum
 
 from bot import handler_type
-from models import room
+from models import room, entry
 from service.interface import ServiceInterface
 from providers.interface import ProviderKind
 
@@ -26,27 +25,12 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
-# async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-#     """Echo the user message."""
-#
-#     # TODO: store single service per server
-#
-#
-#     text = update.message.text
-#     cmd = text.split(' ')
-#
-#
-#     if cmd[0] == "create":
-#
-#     if cmd[0] in {"like", "dislike"}:
-#         is_liked = (cmd[0] == "like")
-#
-#     await update.message.reply_text("echo cmd: " + text)
-
-
 class QuoBotState(enum.Enum):
     CHOOSE_HOST_SERVICE_TYPE = enum.auto()
     WAITING_FOR_ROOM_NUMBER = enum.auto()
+    HOST_LOBBY = enum.auto()
+    QUERY_ENTRY = enum.auto()
+    WAITING_FOR_HOST_TO_START = enum.auto()
     VOTE_IN_PROGRESS = enum.auto()
     WAITING_FOR_VOTE = enum.auto()
 
@@ -75,6 +59,10 @@ class QuoBot:
                     kind.name: self.choose_service_type
                     for kind in ProviderKind
                 },
+                "host_lobby": {
+                    "Start Voting": self.vote_start,
+                    "Add Entry": self.add_entry,
+                },
                 "vote": {
                     "Like": self.vote,
                     "Dislike": self.vote,
@@ -90,16 +78,39 @@ class QuoBot:
                 self.__app.add_handler(CommandHandler(handler_name, handler))
 
         host_handler = ConversationHandler(
-            entry_points=[MessageHandler(filters.Regex("^Host room$"), self.host_room)],
+            entry_points=[
+                MessageHandler(filters.Regex("^Host room$"), self.host_room)
+            ],
             states={
                 QuoBotState.CHOOSE_HOST_SERVICE_TYPE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.choose_service_type)],
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.choose_service_type)
+                ],
+                QuoBotState.HOST_LOBBY: [
+                    MessageHandler(filters.Regex("^Start Voting$"), self.vote_start),
+                    ConversationHandler(
+                        entry_points=[
+                            MessageHandler(filters.Regex("^Add Entry$"), self.add_entry)
+                        ],
+                        states={
+                            QuoBotState.QUERY_ENTRY: [
+                                MessageHandler(filters.TEXT & ~filters.COMMAND, self.query_entry)
+                            ],
+                        },
+                        fallbacks=[
+                            CommandHandler("start", self.start),
+                        ],
+                    ),
+                ],
                 QuoBotState.VOTE_IN_PROGRESS: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.vote_start)],
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.vote_question)
+                ],
                 QuoBotState.WAITING_FOR_VOTE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.vote)],
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.vote)
+                ],
             },
-            fallbacks=[]
+            fallbacks=[
+                CommandHandler("start", self.start),
+            ]
         )
         self.__app.add_handler(host_handler)
 
@@ -108,6 +119,8 @@ class QuoBot:
             states={
                 QuoBotState.WAITING_FOR_ROOM_NUMBER: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self.join_room_by_id)],
+                QuoBotState.WAITING_FOR_HOST_TO_START: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.wait_for_start)],
                 QuoBotState.VOTE_IN_PROGRESS: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self.vote_start)],
                 QuoBotState.WAITING_FOR_VOTE: [
@@ -142,7 +155,6 @@ class QuoBot:
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text="Joined room {}".format(room_id))
 
-
         participants = await self.__service.get_room_participants(str(user_id))
         for participant in participants:
             if participant == str(user_id):
@@ -151,6 +163,49 @@ class QuoBot:
             await context.bot.send_message(chat_id=participant,
                                             text="{} joined!".format(user_id))
 
+        return QuoBotState.WAITING_FOR_HOST_TO_START
+
+    async def wait_for_start(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
+        await context.bot.send_message(chat_id=update.effective_chat.id,
+                                        text="Waiting for host to start...")
+
+        await self.__service.wait_start(str(update.effective_chat.id))
+
+        await context.bot.send_message(chat_id=update.effective_chat.id,
+                                       text="Voting started!")
+
+        return await self.next_vote(update, context)
+
+    @handler_type.command
+    async def add_entry(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
+        await context.bot.send_message(chat_id=update.effective_chat.id,
+                                       text="Provide entry:")
+        return QuoBotState.QUERY_ENTRY
+
+    @handler_type.command
+    async def query_entry(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
+        new_entry = update.message.text
+        user_id = update.effective_chat.id
+
+        entry_obj = entry.ProviderEntry(name=str(new_entry), descr=None, picture_url=None, rating=None, price=None)
+
+        await self.__service.add_entry(str(user_id), entry_obj)
+        await context.bot.send_message(chat_id=update.effective_chat.id,
+                                       text="Entry \"{}\" added".format(new_entry))
+
+        return ConversationHandler.END
+
+    @handler_type.command
+    async def vote_start(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_chat.id
+
+        await self.__service.start_vote(str(user_id))
+
+        participants = await self.__service.get_room_participants(str(user_id))
+
+        for participant in participants:
+            await context.bot.send_message(chat_id=participant,
+                                            text="Voting started!")
 
         return await self.next_vote(update, context)
 
@@ -163,17 +218,12 @@ class QuoBot:
                                        reply_markup=reply_markup)
         return QuoBotState.CHOOSE_HOST_SERVICE_TYPE
 
-    @staticmethod
-    async def callback_alarm(context: CallbackContext):
-        context.bot.send_message(chat_id=id, text='Hi, This is a daily reminder')
-
-
     async def next_vote(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         buttons = [[button_option for button_option in self.__button_map["vote"].keys()]]
         reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
 
         user_id = update.effective_chat.id
-        curr_option = await self.__service.current_option(str(user_id))
+        curr_option, maybe_match = await self.__service.current_option(str(user_id))
 
         query_text = "What do you think about\n{}?".format(curr_option["name"])
         if curr_option["descr"]:
@@ -183,7 +233,6 @@ class QuoBot:
                                        text=query_text,
                                        reply_markup=reply_markup)
         return QuoBotState.WAITING_FOR_VOTE
-
 
     async def choose_service_type(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         provider_name = update.message.text
@@ -199,11 +248,16 @@ class QuoBot:
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text="Room Created! ID: {}".format(room_id))
 
-        return await self.next_vote(update, context)
+        buttons = [[button_option for button_option in self.__button_map["host_lobby"].keys()]]
+        reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
+        await context.bot.send_message(chat_id=update.effective_chat.id,
+                                       text="Waiting for other participants",
+                                       reply_markup=reply_markup)
+
+        return QuoBotState.HOST_LOBBY
 
     @handler_type.command
-    async def vote_start(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
-        logging.info("vote start")
+    async def vote_question(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         return await self.next_vote(update, context)
 
     @handler_type.command
@@ -222,7 +276,6 @@ class QuoBot:
                 await context.bot.send_message(chat_id=participant,
                                                text="You've got a match: {}!".format(got_match["name"]))
 
-            return None
+            return ConversationHandler.END
 
-        logging.info("vote start")
         return await self.next_vote(update, context)

@@ -17,5 +17,5 @@ async def get_providers(config: typing.Dict[str, str]) -> typing.Dict[interface.
         interface.ProviderKind.RESTAURANTS: await restaurants.get_provider(config),
         interface.ProviderKind.COUNTRY: await country.get_provider(config),
         interface.ProviderKind.CITY: await city.get_provider(config),
-        interface.ProviderKind.CUSTOM: await custom.get_provider(config),
+        interface.ProviderKind.CUSTOM: None,
     }
