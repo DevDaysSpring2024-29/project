@@ -149,8 +149,8 @@ class Service(interface.ServiceInterface):
         """Only owner of the room can call this"""
         room_id = await self._get_users_room(user_id)
         room_data = await self._load_room(room_id)
-        if providers.ProviderKind[room_data["params"]["provider_name"]] != providers.ProviderKind.CUSTOM:
-            provider = self.providers_.get(providers.ProviderKind[room_data["params"]["provider_name"]])
+        if providers.ProviderKind(room_data["params"]["provider_name"]) != providers.ProviderKind.CUSTOM:
+            provider = self.providers_.get(providers.ProviderKind(room_data["params"]["provider_name"]))
             if not provider:
                 raise Exception("AAAAAAA")
             options = await provider.get_entries({"filters": room_data["params"]["filters"], "exclude_names": []})

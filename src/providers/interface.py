@@ -15,9 +15,9 @@ class ProviderInterface(typing.Protocol):
 
 
 class ProviderKind(enum.StrEnum):
-    DUMMY = "dummy"
-    KINOPOISK = "kinopoisk"
-    RESTAURANTS = "restaurants"
-    COUNTRY = "country"
-    CITY = "city"
-    CUSTOM = "custom"
+    # DUMMY = "dummy"
+    KINOPOISK = "КиноПоиск"
+    RESTAURANTS = "Рестораны"
+    COUNTRY = "Страны"
+    CITY = "Города"
+    CUSTOM = "Свой список"

@@ -12,7 +12,7 @@ from .custom import provider as custom
 async def get_providers(config: typing.Dict[str, str]) -> typing.Dict[interface.ProviderKind, interface.ProviderInterface]:
 
     return {
-        interface.ProviderKind.DUMMY: await dummy.get_provider(config),
+        # interface.ProviderKind.DUMMY: await dummy.get_provider(config),
         interface.ProviderKind.KINOPOISK: await kinopoisk.get_provider(config),
         interface.ProviderKind.RESTAURANTS: await restaurants.get_provider(config),
         interface.ProviderKind.COUNTRY: await country.get_provider(config),

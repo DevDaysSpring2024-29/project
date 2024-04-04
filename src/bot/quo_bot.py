@@ -35,6 +35,11 @@ class QuoBotState(enum.Enum):
     WAITING_FOR_VOTE = enum.auto()
 
 
+def divide_chunks(l, n):
+    for i in range(0, len(l), n):
+        yield l[i:i + n]
+
+
 class QuoBot:
     __initialized = False
     __instance = None
@@ -56,7 +61,7 @@ class QuoBot:
             self.__button_map = {
                 "start": {"Создать комнату": self.host_room, "Присоединиться к комнате": self.join_room},
                 "choose_service_type": {
-                    kind.name: self.choose_service_type
+                    kind.value: self.choose_service_type
                     for kind in ProviderKind
                 },
                 "host_lobby": {
@@ -83,9 +88,11 @@ class QuoBot:
             ],
             states={
                 QuoBotState.CHOOSE_HOST_SERVICE_TYPE: [
+                    MessageHandler(filters.Regex("^Выйти$"), self.leave_room),
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self.choose_service_type)
                 ],
                 QuoBotState.HOST_LOBBY: [
+                    MessageHandler(filters.Regex("^Выйти$"), self.leave_room),
                     MessageHandler(filters.Regex("^Запустить голосование$"), self.vote_start),
                     ConversationHandler(
                         entry_points=[
@@ -100,9 +107,11 @@ class QuoBot:
                     ),
                 ],
                 QuoBotState.VOTE_IN_PROGRESS: [
+                    MessageHandler(filters.Regex("^Выйти$"), self.leave_room),
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self.vote_question)
                 ],
                 QuoBotState.WAITING_FOR_VOTE: [
+                    MessageHandler(filters.Regex("^Выйти$"), self.leave_room),
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self.vote)
                 ],
             },
@@ -115,10 +124,14 @@ class QuoBot:
             entry_points=[MessageHandler(filters.Regex("^Присоединиться к комнате$"), self.join_room)],
             states={
                 QuoBotState.WAITING_FOR_ROOM_NUMBER: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.join_room_by_id)],
+                    MessageHandler(filters.Regex("^Выйти$"), self.leave_room),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.join_room_by_id),
+                ],
                 QuoBotState.VOTE_IN_PROGRESS: [
+                    MessageHandler(filters.Regex("^Выйти$"), self.leave_room),
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self.vote_start)],
                 QuoBotState.WAITING_FOR_VOTE: [
+                    MessageHandler(filters.Regex("^Выйти$"), self.leave_room),
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self.vote)],
             },
             fallbacks=[],
@@ -136,7 +149,7 @@ class QuoBot:
 
     @handler_type.command
     async def join_room(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
-        buttons = [["Вернуться"]]
+        buttons = [["Выйти"]]
         reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text="Введи идентификатор комнаты:",
@@ -145,14 +158,6 @@ class QuoBot:
         return QuoBotState.WAITING_FOR_ROOM_NUMBER
 
     async def join_room_by_id(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.message.text == "Вернуться":
-            buttons = [[button_option for button_option in self.__button_map["start"].keys()]]
-            reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
-            await context.bot.send_message(chat_id=update.effective_chat.id,
-                                        text="Ты сейчас не находишься ни в какой комнате",
-                                        reply_markup=reply_markup)
-            return ConversationHandler.END
-
         try:
             room_id = int(update.message.text)
         except:
@@ -241,7 +246,8 @@ class QuoBot:
 
     @handler_type.command
     async def host_room(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
-        buttons = [[button_option for button_option in self.__button_map["choose_service_type"].keys()]]
+        buttons = list(divide_chunks([button_option for button_option in self.__button_map["choose_service_type"].keys()], 3)) + [["Выйти"]]
+
         reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text="Из какой категории будем выбирать?",
@@ -272,7 +278,7 @@ class QuoBot:
         user_id = update.effective_chat.id
 
         try:
-            _ = ProviderKind[provider_name]
+            _ = ProviderKind(provider_name)
         except:
             await context.bot.send_message(chat_id=update.effective_chat.id,
                                         text="А я про такую категорию ничего и не знаю... Попробуй еще раз")
@@ -291,7 +297,10 @@ class QuoBot:
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text="{}".format(room_id))
 
-        buttons = [[button_option for button_option in self.__button_map["host_lobby"].keys()]]
+        buttons = [
+            [button_option for button_option in self.__button_map["host_lobby"].keys()],
+            ["Выйти"],
+        ]
         reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text="Ожидаем остальных участников",
@@ -304,12 +313,9 @@ class QuoBot:
         return await self.next_vote(update, context)
 
     @handler_type.command
-    async def vote(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
-        vote_response = update.message.text
+    async def leave_room(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_chat.id
-
-
-        if vote_response == "Выйти":
+        try:
             participants = await self.__service.get_room_participants(str(user_id))
             await self.__service.leave_room(str(user_id))
 
@@ -318,16 +324,30 @@ class QuoBot:
                     continue
 
                 await context.bot.send_message(chat_id=participant,
-                                               text="@{} вышел".format(update.effective_user.username))
+                                                text="@{} вышел".format(update.effective_user.username))
 
-            buttons = [[button_option for button_option in self.__button_map["start"].keys()]]
-            reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
+        except:
+            logging.info("left")
 
-            await context.bot.send_message(chat_id=user_id,
-                                           text="Вы вышли из комнаты",
-                                           reply_markup=reply_markup)
+        buttons = [
+            [button_option for button_option in self.__button_map["start"].keys()],
+        ]
+        reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
 
-            return ConversationHandler.END
+        await context.bot.send_message(chat_id=user_id,
+                                        text="Вы вышли из комнаты",
+                                        reply_markup=reply_markup)
+
+        return ConversationHandler.END
+
+
+    @handler_type.command
+    async def vote(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
+        vote_response = update.message.text
+        user_id = update.effective_chat.id
+
+        if vote_response == "Выйти":
+            return await self.leave_room(update, context)
 
         is_liked = (vote_response == "Лайк 👍")
         await self.__service.vote(str(user_id), is_liked)
