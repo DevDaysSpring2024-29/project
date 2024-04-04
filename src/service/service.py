@@ -137,6 +137,12 @@ class Service(interface.ServiceInterface):
         room_data = await self._load_room(room_id)
         return room_data["match"]
 
+    async def reset_match(self, user_id: str):
+        room_id = await self._get_users_room(user_id)
+        room_data = await self._load_room(room_id)
+        room_data["match"] = None
+        await self._store_room(room_id, room_data)
+
     async def vote(self, user_id: str, is_liked: bool):
         room_id = await self._get_users_room(user_id)
         room_data = await self._load_room(room_id)

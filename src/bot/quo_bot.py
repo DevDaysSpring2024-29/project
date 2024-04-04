@@ -356,7 +356,9 @@ class QuoBot:
         if got_match:
             participants = await self.__service.get_room_participants(str(user_id))
 
-            match_txt = "You've got a match: {}!".format(got_match["name"])
+            await self.__service.reset_match(str(user_id))
+
+            match_txt = "✅ You've got a match: {}! ✅".format(got_match["name"])
             if got_match["descr"]:
                 match_txt += "\n{}".format(got_match["descr"])
 
@@ -367,6 +369,5 @@ class QuoBot:
                 await context.bot.send_message(chat_id=participant,
                                                text=match_txt,
                                                reply_markup=reply_markup)
-            return ConversationHandler.END
 
         return await self.next_vote(update, context)
