@@ -136,10 +136,21 @@ class QuoBot:
         room_id = int(update.message.text)
         # TODO: fallback to WAITING_FOR_ROOM_NUMBER if could not parse or join
 
-        user_id = update.effective_user.id
+        user_id = update.effective_chat.id
+
         await self.__service.join_room(str(user_id), room_id)
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text="Joined room {}".format(room_id))
+
+
+        participants = await self.__service.get_room_participants(str(user_id))
+        for participant in participants:
+            if participant == str(user_id):
+                continue
+
+            await context.bot.send_message(chat_id=participant,
+                                            text="{} joined!".format(user_id))
+
 
         return await self.next_vote(update, context)
 
@@ -161,7 +172,7 @@ class QuoBot:
         buttons = [[button_option for button_option in self.__button_map["vote"].keys()]]
         reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
 
-        user_id = update.effective_user.id
+        user_id = update.effective_chat.id
         curr_option = await self.__service.current_option(str(user_id))
 
         query_text = "What do you think about\n{}?".format(curr_option["name"])
@@ -176,7 +187,7 @@ class QuoBot:
 
     async def choose_service_type(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         provider_name = update.message.text
-        user_id = update.effective_user.id
+        user_id = update.effective_chat.id
 
         params = room.RoomParams(
             provider_name=provider_name or "",
@@ -198,15 +209,19 @@ class QuoBot:
     @handler_type.command
     async def vote(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         vote_response = update.message.text
-        user_id = update.effective_user.id
+        user_id = update.effective_chat.id
 
         is_liked = (vote_response == "Like")
         await self.__service.vote(str(user_id), is_liked)
 
         got_match = await self.__service.get_match(str(user_id))
         if got_match:
-            await context.bot.send_message(chat_id=update.effective_chat.id,
-                                           text="You've got a match: {}!".format(got_match["name"]))
+            participants = await self.__service.get_room_participants(str(user_id))
+
+            for participant in participants:
+                await context.bot.send_message(chat_id=participant,
+                                               text="You've got a match: {}!".format(got_match["name"]))
+
             return None
 
         logging.info("vote start")

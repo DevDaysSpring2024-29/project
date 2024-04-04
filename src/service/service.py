@@ -54,6 +54,11 @@ class Service(interface.ServiceInterface):
         self.users_ = dict()
         self.next_room_id_ = 0
 
+    async def get_room_participants(self, user_id: str) -> list[str]:
+        room_id = await self._get_users_room(user_id)
+        room_data = await self._load_room(room_id)
+        return room_data["participants"]
+
     async def create_room(self, user_id: str, params: room.RoomParams) -> int:
         """Callback is called when people are joining group. And will be called then voting is started and is finished and room is closed"""
         room_id = await self._generate_room_id()
