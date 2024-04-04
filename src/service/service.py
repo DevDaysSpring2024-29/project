@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import json
+import itertools
 from logging import log
 import logging
 import random
@@ -66,6 +67,15 @@ class Service(interface.ServiceInterface):
         room_data = await self._load_room(room_id)
         return room_data["participants"]
 
+    async def wait_start(self, user_id: str):
+        room_id = await self._get_users_room(user_id)
+
+        room_data = await self._load_room(room_id)
+        while room_data["vote_started"] is False:
+            # FIXME
+            await asyncio.sleep(1)
+            room_data = await self._load_room(room_id)
+
     async def create_room(self, user_id: str, params: room.RoomParams) -> int:
         """Callback is called when people are joining group. And will be called then voting is started and is finished and room is closed"""
         room_id = await self._generate_room_id()
@@ -82,7 +92,7 @@ class Service(interface.ServiceInterface):
         await self._store_room(room_id, room_data)
         return room_id
 
-    async def add_entry(self, user_id: str, room_id: int, entry: entry.ProviderEntry) -> None:
+    async def add_entry(self, user_id: str, entry: entry.ProviderEntry) -> None:
         """Will add custom entry"""
         # Redis lock <room_id>
         room_id = await self._get_users_room(user_id)
@@ -106,11 +116,11 @@ class Service(interface.ServiceInterface):
         await self._store_room(room_id, room_data)
         # Redis unlock <room_id>
 
-    async def current_option(self, user_id: str) -> entry.ProviderEntry:
+    async def current_option(self, user_id: str):
         room_id = await self._get_users_room(user_id)
         room_data = await self._load_room(room_id)
         user_index = self._get_user_index(user_id, room_data)
-        return room_data["options"][self._get_user_current_option_index(user_index, room_data)]
+        return room_data["options"][self._get_user_current_option_index(user_index, room_data)], room_data["match"]
         # Redis unlock <room_id>
 
     async def get_match(self, user_id: str) -> typing.Optional[entry.ProviderEntry]:
@@ -127,16 +137,15 @@ class Service(interface.ServiceInterface):
         self._progress_user(user_index, room_data)
         await self._store_room(room_id, room_data)
 
-
     async def start_vote(self, user_id: str) -> None:
         """Only owner of the room can call this"""
         room_id = await self._get_users_room(user_id)
         room_data = await self._load_room(room_id)
-        if providers.ProviderKind[room_data["provider_name"]] != providers.ProviderKind.CUSTOM:
-            provider = self.providers_.get(providers.ProviderKind[room_data["provider_name"]])
+        if providers.ProviderKind[room_data["params"]["provider_name"]] != providers.ProviderKind.CUSTOM:
+            provider = self.providers_.get(providers.ProviderKind[room_data["params"]["provider_name"]])
             if not provider:
                 raise Exception("AAAAAAA")
-            options = await provider.get_entries({"filters": room_data["filters"], "exclude_names": []})
+            options = await provider.get_entries({"filters": room_data["params"]["filters"], "exclude_names": []})
 
             room_data["options"] = options
         else:
@@ -150,12 +159,7 @@ class Service(interface.ServiceInterface):
             raise Exception("OH GOD WHY PLEASE STOP I BEG YOU AAAAA")
         room_data["vote_started"] = True
 
-        def get_shuffled():
-            indexes = list(range(len(room_data["options"])))
-            random.shuffle(indexes)
-            return indexes
-
-        room_data["options_orders"] = {i: get_shuffled() for i in range(len(room_data["participants"]))}
+        room_data["options_orders"] = {i: self._reshuffle_options(room_data) for i in range(len(room_data["participants"]))}
         await self._store_room(room_id, room_data)
         # Redis unlock <room_id>
 
@@ -177,8 +181,12 @@ class Service(interface.ServiceInterface):
             room_data["match"] = option
 
     def _progress_user(self, user_index: int, room_data: RoomData):
-        # To-do: check if reached final option and load more
         room_data["participants_positions"][user_index] += 1
+
+        # if no options left then reshuffle them and give again
+        if room_data["participants_positions"][user_index] == len(room_data["options_orders"][user_index]):
+            room_data["participants_positions"][user_index] = 0
+            room_data["options_orders"][user_index] = self._reshuffle_options(room_data)
 
     def _create_empty_room(self) -> RoomData:
         return copy.deepcopy(EMPTY_ROOM)  # type: ignore
@@ -214,3 +222,16 @@ class Service(interface.ServiceInterface):
         new_id = self.next_room_id_
         self.next_room_id_ += 1
         return new_id
+
+    def _reshuffle_options(self, room_data: RoomData) -> list:
+        def divide_chunks(l, n):
+            for i in range(0, len(l), n):
+                yield l[i:i + n]
+
+        def get_shuffled():
+            indexes = list(range(len(room_data["options"])))
+            chunks = [random.shuffle(chunk) or chunk for chunk in divide_chunks(indexes, 10)]
+            indexes = list(itertools.chain.from_iterable(chunks))
+            return indexes
+
+        return get_shuffled()
