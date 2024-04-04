@@ -367,7 +367,6 @@ class QuoBot:
 
             for participant in participants:
                 await context.bot.send_message(chat_id=participant,
-                                               text=match_txt,
-                                               reply_markup=reply_markup)
+                                               text=match_txt, allow_sending_without_reply=True)
 
         return await self.next_vote(update, context)
