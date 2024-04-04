@@ -23,7 +23,7 @@ class RestaurantsProvider(providers.ProviderInterface):
             return [
                 entry.ProviderEntry(
                     name=element['tags']['name'],
-                    descr=self.ref_template.format(lat=element['lat'], lng=element['lon']),
+                    descr=f"На карте: {self.ref_template.format(lat=element['lat'], lng=element['lon'])}",
                     rating=None,
                     price=None,
                     picture_url=None,
