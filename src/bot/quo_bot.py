@@ -264,7 +264,9 @@ class QuoBot:
         room_id = await self.__service.create_room(str(user_id), params)
 
         await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="Комната создана! Предоставьте остальным участникам идентификатор: `{}`".format(room_id))
+                                       text="Комната создана! Предоставьте остальным участникам идентификатор:")
+        await context.bot.send_message(chat_id=update.effective_chat.id,
+                                       text="{}".format(room_id))
 
         buttons = [[button_option for button_option in self.__button_map["host_lobby"].keys()]]
         reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
@@ -290,9 +292,13 @@ class QuoBot:
         if got_match:
             participants = await self.__service.get_room_participants(str(user_id))
 
+            match_txt = "You've got a match: {}!".format(got_match["name"])
+            if got_match["descr"]:
+                match_txt += "\n{}".format(got_match["descr"])
+
             for participant in participants:
                 await context.bot.send_message(chat_id=participant,
-                                               text="You've got a match: {}!".format(got_match["name"]))
+                                               text=match_txt)
 
             return ConversationHandler.END
 
