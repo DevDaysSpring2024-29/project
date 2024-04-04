@@ -50,7 +50,7 @@ class QuoBot:
             self.__initialized = True
             self.__token = token
             self.__service = service
-            self.__app = Application.builder().token(self.__token).concurrent_updates(True).build()
+            self.__app = Application.builder().token(self.__token).build()
             self._setup_handlers()
 
             self.__button_map = {
@@ -106,7 +106,8 @@ class QuoBot:
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self.vote)
                 ],
             },
-            fallbacks=[]
+            fallbacks=[],
+            block=False,
         )
         self.__app.add_handler(host_handler)
 
@@ -120,7 +121,8 @@ class QuoBot:
                 QuoBotState.WAITING_FOR_VOTE: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self.vote)],
             },
-            fallbacks=[]
+            fallbacks=[],
+            block=False,
         )
         self.__app.add_handler(join_handler)
 
@@ -236,7 +238,10 @@ class QuoBot:
         return QuoBotState.CHOOSE_HOST_SERVICE_TYPE
 
     async def next_vote(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
-        buttons = [[button_option for button_option in self.__button_map["vote"].keys()]]
+        buttons = [
+            [button_option for button_option in self.__button_map["vote"].keys()],
+            ["Выйти"],
+        ]
         reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
 
         user_id = update.effective_chat.id
@@ -292,6 +297,9 @@ class QuoBot:
         vote_response = update.message.text
         user_id = update.effective_chat.id
 
+        if vote_response == "Выйти":
+            return ConversationHandler.END
+
         is_liked = (vote_response == "Лайк 👍")
         await self.__service.vote(str(user_id), is_liked)
 
@@ -303,10 +311,13 @@ class QuoBot:
             if got_match["descr"]:
                 match_txt += "\n{}".format(got_match["descr"])
 
+            buttons = [[button_option for button_option in self.__button_map["start"].keys()]]
+            reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
+
             for participant in participants:
                 await context.bot.send_message(chat_id=participant,
-                                               text=match_txt)
-
+                                               text=match_txt,
+                                               reply_markup=reply_markup)
             return ConversationHandler.END
 
         return await self.next_vote(update, context)
