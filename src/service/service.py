@@ -120,7 +120,7 @@ class Service(interface.ServiceInterface):
         room_id = await self._get_users_room(user_id)
         room_data = await self._load_room(room_id)
         user_index = self._get_user_index(user_id, room_data)
-        return room_data["options"][self._get_user_current_option_index(user_index, room_data)], room_data["match"]
+        return room_data["options"][self._get_user_current_option_index(user_index, room_data)]
         # Redis unlock <room_id>
 
     async def get_match(self, user_id: str) -> typing.Optional[entry.ProviderEntry]:
