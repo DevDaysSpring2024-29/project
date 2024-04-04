@@ -96,9 +96,7 @@ class QuoBot:
                                 MessageHandler(filters.TEXT & ~filters.COMMAND, self.query_entry)
                             ],
                         },
-                        fallbacks=[
-                            CommandHandler("start", self.start),
-                        ],
+                        fallbacks=[],
                     ),
                 ],
                 QuoBotState.VOTE_IN_PROGRESS: [
@@ -108,9 +106,7 @@ class QuoBot:
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self.vote)
                 ],
             },
-            fallbacks=[
-                CommandHandler("start", self.start),
-            ]
+            fallbacks=[]
         )
         self.__app.add_handler(host_handler)
 
@@ -184,13 +180,24 @@ class QuoBot:
 
     @handler_type.command
     async def add_entry(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
+        buttons = [["Все опции добавлены"]]
+        reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
         await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="Введите опицю:")
+                                       text="Введите опицю:",
+                                       reply_markup=reply_markup)
         return QuoBotState.QUERY_ENTRY
 
     @handler_type.command
     async def query_entry(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         new_entry = update.message.text
+        if new_entry == "Все опции добавлены":
+            buttons = [[button_option for button_option in self.__button_map["host_lobby"].keys()]]
+            reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
+            await context.bot.send_message(chat_id=update.effective_chat.id,
+                                        text="Запускаем?",
+                                        reply_markup=reply_markup)
+            return ConversationHandler.END
+
         user_id = update.effective_chat.id
 
         entry_obj = entry.ProviderEntry(name=str(new_entry), descr=None, picture_url=None, rating=None, price=None)
@@ -199,7 +206,7 @@ class QuoBot:
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text="Опция \"{}\" добавлена".format(new_entry))
 
-        return ConversationHandler.END
+        return await self.add_entry(update, context)
 
     @handler_type.command
     async def vote_start(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):

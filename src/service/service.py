@@ -148,7 +148,8 @@ class Service(interface.ServiceInterface):
                 raise Exception("AAAAAAA")
             options = await provider.get_entries({"filters": room_data["params"]["filters"], "exclude_names": []})
 
-            room_data["options"] = options
+            random.shuffle(options)
+            room_data["options"] += options
         else:
             # All options should be already set
             if len(room_data["options"]) == 0:
