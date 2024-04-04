@@ -19,6 +19,9 @@ class ServiceInterface(typing.Protocol):
     async def current_option(self, user_id: str) -> typing.Tuple[entry.ProviderEntry, typing.Optional[entry.ProviderEntry]]:
         ...
 
+    async def reset_match(self, user_id: str):
+        ...
+
     async def get_match(self, user_id: str) -> typing.Optional[entry.ProviderEntry]:
         ...
 
