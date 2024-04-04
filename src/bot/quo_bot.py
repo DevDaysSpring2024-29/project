@@ -136,12 +136,23 @@ class QuoBot:
 
     @handler_type.command
     async def join_room(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
+        buttons = [["Вернуться"]]
+        reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
         await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="Введи идентификатор комнаты:")
+                                       text="Введи идентификатор комнаты:",
+                                       reply_markup=reply_markup)
 
         return QuoBotState.WAITING_FOR_ROOM_NUMBER
 
     async def join_room_by_id(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
+        if update.message.text == "Вернуться":
+            buttons = [[button_option for button_option in self.__button_map["start"].keys()]]
+            reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
+            await context.bot.send_message(chat_id=update.effective_chat.id,
+                                        text="Ты сейчас не находишься ни в какой комнате",
+                                        reply_markup=reply_markup)
+            return ConversationHandler.END
+
         try:
             room_id = int(update.message.text)
         except:
@@ -160,7 +171,7 @@ class QuoBot:
             return await self.join_room(update, context)
 
         await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="Успешно присоединились {}".format(room_id))
+                                       text="Успешно присоединились к комнате {}".format(room_id))
 
         participants = await self.__service.get_room_participants(str(user_id))
         for participant in participants:
@@ -297,7 +308,25 @@ class QuoBot:
         vote_response = update.message.text
         user_id = update.effective_chat.id
 
+
         if vote_response == "Выйти":
+            participants = await self.__service.get_room_participants(str(user_id))
+            await self.__service.leave_room(str(user_id))
+
+            for participant in participants:
+                if participant == str(user_id):
+                    continue
+
+                await context.bot.send_message(chat_id=participant,
+                                               text="@{} вышел".format(update.effective_user.username))
+
+            buttons = [[button_option for button_option in self.__button_map["start"].keys()]]
+            reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
+
+            await context.bot.send_message(chat_id=user_id,
+                                           text="Вы вышли из комнаты",
+                                           reply_markup=reply_markup)
+
             return ConversationHandler.END
 
         is_liked = (vote_response == "Лайк 👍")

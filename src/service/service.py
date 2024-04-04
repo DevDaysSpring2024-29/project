@@ -21,12 +21,12 @@ class RoomData(typing.TypedDict):
 
     params: room.RoomParams
 
-    participants: list[str]
-    participants_positions: list[int]  # sizeof == sizeof participants
+    participants: set[str]
+    participants_positions: dict[str, int]  # sizeof == sizeof participants
 
     options: list[entry.ProviderEntry]
     options_likes: dict[int, set[str]]  # sizeof == sizeof options
-    options_orders: dict[int, list[int]]  # for every key: sizeof value == sizeof options
+    options_orders: dict[str, list[int]]  # for every key: sizeof value == sizeof options
 
     match: typing.Optional[entry.ProviderEntry]
     vote_started: bool
@@ -38,8 +38,8 @@ EMPTY_ROOM = {
 
     "params": None,
 
-    "participants": [],
-    "participants_positions": [],
+    "participants": set(),
+    "participants_positions": {},
 
     "options": [],
     "options_likes": {},
@@ -60,12 +60,12 @@ class Service(interface.ServiceInterface):
         self.storage_ = storage
         self.rooms_ = dict()
         self.users_ = dict()
-        self.next_room_id_ = 0
+        self.next_room_id_ = random.randint(10000, 50000)
 
     async def get_room_participants(self, user_id: str) -> list[str]:
         room_id = await self._get_users_room(user_id)
         room_data = await self._load_room(room_id)
-        return room_data["participants"]
+        return list(room_data["participants"])
 
     async def wait_start(self, user_id: str):
         room_id = await self._get_users_room(user_id)
@@ -104,6 +104,15 @@ class Service(interface.ServiceInterface):
         await self._store_room(room_id, room_data)
         # Redis unlock <room_id>
 
+    async def leave_room(self, user_id: str) -> None:
+        """Will be called then voting is started and is finished and room is closed. Active only is voting is not started"""
+        # Redis lock <room_id>
+        room_id = await self._get_users_room(user_id)
+        room_data = await self._load_room(room_id)
+        self._remove_user_from_room(room_data, user_id)
+        self.users_[user_id] = -1
+        await self._store_room(room_id, room_data)
+
     async def join_room(self, user_id: str, room_id: int) -> None:
         """Will be called then voting is started and is finished and room is closed. Active only is voting is not started"""
         # Redis lock <room_id>
@@ -120,8 +129,7 @@ class Service(interface.ServiceInterface):
     async def current_option(self, user_id: str):
         room_id = await self._get_users_room(user_id)
         room_data = await self._load_room(room_id)
-        user_index = self._get_user_index(user_id, room_data)
-        return room_data["options"][self._get_user_current_option_index(user_index, room_data)], room_data["match"]
+        return room_data["options"][self._get_user_current_option_index(user_id, room_data)], room_data["match"]
         # Redis unlock <room_id>
 
     async def get_match(self, user_id: str) -> typing.Optional[entry.ProviderEntry]:
@@ -132,10 +140,9 @@ class Service(interface.ServiceInterface):
     async def vote(self, user_id: str, is_liked: bool):
         room_id = await self._get_users_room(user_id)
         room_data = await self._load_room(room_id)
-        user_index = self._get_user_index(user_id, room_data)
         if is_liked:
-            await self._like_option(user_index, room_data)
-        self._progress_user(user_index, room_data)
+            await self._like_option(user_id, room_data)
+        self._progress_user(user_id, room_data)
         await self._store_room(room_id, room_data)
 
     async def start_vote(self, user_id: str) -> None:
@@ -163,49 +170,43 @@ class Service(interface.ServiceInterface):
         logging.info("STARTED")
         room_data["vote_started"] = True
 
-        room_data["options_orders"] = {i: self._reshuffle_options(room_data) for i in range(len(room_data["participants"]))}
+        room_data["options_orders"] = {id: self._reshuffle_options(room_data) for id in room_data["participants"]}
         await self._store_room(room_id, room_data)
         logging.info("STORED")
         # Redis unlock <room_id>
 
-    def _get_user_index(self, user_id: str, room_data: RoomData) -> int:
-        return room_data["participants"].index(user_id)
-
-    def _get_user_current_option_index(self, user_index: int, room_data: RoomData) -> int:
-        return room_data["options_orders"][user_index][
-            room_data["participants_positions"][user_index]
+    def _get_user_current_option_index(self, user_id: str, room_data: RoomData) -> int:
+        return room_data["options_orders"][user_id][
+            room_data["participants_positions"][user_id]
         ]
 
-    async def _like_option(self, user_index: int, room_data: RoomData):
-        option_index = self._get_user_current_option_index(user_index, room_data)
-        room_data["options_likes"][option_index].add(room_data["participants"][user_index])
+    async def _like_option(self, user_id: str, room_data: RoomData):
+        option_index = self._get_user_current_option_index(user_id, room_data)
+        room_data["options_likes"][option_index].add(user_id)
 
-        if len(room_data["options_likes"][option_index]) == len(room_data["participants"]) and room_data["match"] is None:
+        if len(room_data["options_likes"][option_index]) >= len(room_data["participants"]) and room_data["match"] is None:
             option = room_data["options"][option_index]
             logging.info("match: " + option["name"])
             room_data["match"] = option
 
-    def _progress_user(self, user_index: int, room_data: RoomData):
-        room_data["participants_positions"][user_index] += 1
+    def _progress_user(self, user_id: str, room_data: RoomData):
+        room_data["participants_positions"][user_id] += 1
 
         # if no options left then reshuffle them and give again
-        if room_data["participants_positions"][user_index] == len(room_data["options_orders"][user_index]):
-            room_data["participants_positions"][user_index] = 0
-            room_data["options_orders"][user_index] = self._reshuffle_options(room_data)
+        if room_data["participants_positions"][user_id] == len(room_data["options_orders"][user_id]):
+            room_data["participants_positions"][user_id] = 0
+            room_data["options_orders"][user_id] = self._reshuffle_options(room_data)
 
     def _create_empty_room(self) -> RoomData:
         return copy.deepcopy(EMPTY_ROOM)  # type: ignore
 
     def _add_user_to_room(self, room_data: RoomData, user_id: str):
-        room_data["participants"].append(user_id)
-        room_data["participants_positions"].append(0)
+        room_data["participants"].add(user_id)
+        room_data["participants_positions"][user_id] = 0
 
-        # def get_shuffled():
-        #     indexes = list(range(len(room_data["options"])))
-        #     random.shuffle(indexes)
-        #     return indexes
-
-        # room_data["options_orders"][len(room_data["participants"]) - 1] = get_shuffled()
+    def _remove_user_from_room(self, room_data: RoomData, user_id: str):
+        room_data["participants"].remove(user_id)
+        del room_data["participants_positions"][user_id]
 
     # Add redis later for following methods (for now can be used with one worker)
     async def _assign_users_room(self, user_id: str, room_id: int):

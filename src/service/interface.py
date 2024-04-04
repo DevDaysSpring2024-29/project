@@ -13,6 +13,9 @@ class ServiceInterface(typing.Protocol):
         """Will be called then voting is started and is finished and room is closed. Active only is voting is not started"""
         ...
 
+    async def leave_room(self, user_id: str) -> None:
+        ...
+
     async def current_option(self, user_id: str) -> typing.Tuple[entry.ProviderEntry, typing.Optional[entry.ProviderEntry]]:
         ...
 
