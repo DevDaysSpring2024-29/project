@@ -50,7 +50,7 @@ class QuoBot:
             self.__initialized = True
             self.__token = token
             self.__service = service
-            self.__app = Application.builder().token(self.__token).build()
+            self.__app = Application.builder().token(self.__token).concurrent_updates(True).build()
             self._setup_handlers()
 
             self.__button_map = {
@@ -119,8 +119,6 @@ class QuoBot:
             states={
                 QuoBotState.WAITING_FOR_ROOM_NUMBER: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self.join_room_by_id)],
-                QuoBotState.WAITING_FOR_HOST_TO_START: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.wait_for_start)],
                 QuoBotState.VOTE_IN_PROGRESS: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self.vote_start)],
                 QuoBotState.WAITING_FOR_VOTE: [
@@ -146,12 +144,23 @@ class QuoBot:
         return QuoBotState.WAITING_FOR_ROOM_NUMBER
 
     async def join_room_by_id(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
-        room_id = int(update.message.text)
-        # TODO: fallback to WAITING_FOR_ROOM_NUMBER if could not parse or join
+        try:
+            room_id = int(update.message.text)
+        except:
+            await context.bot.send_message(chat_id=update.effective_chat.id,
+                                           text="Не получилось обработать идентификатор комнаты: \"{}\"".format(update.message.text))
+            return await self.join_room(update, context)
+
 
         user_id = update.effective_chat.id
 
-        await self.__service.join_room(str(user_id), room_id)
+        try:
+            await self.__service.join_room(str(user_id), room_id)
+        except:
+            await context.bot.send_message(chat_id=update.effective_chat.id,
+                                           text="Комната \"{}\" не найдена".format(update.message.text))
+            return await self.join_room(update, context)
+
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                        text="Успешно присоединились {}".format(room_id))
 
@@ -163,16 +172,13 @@ class QuoBot:
             await context.bot.send_message(chat_id=participant,
                                             text="@{} присоединился!".format(update.effective_user.username))
 
-        return QuoBotState.WAITING_FOR_HOST_TO_START
+        return await self.wait_for_start(update, context)
 
     async def wait_for_start(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=update.effective_chat.id,
                                         text="Ожидаем начала...")
 
         await self.__service.wait_start(str(update.effective_chat.id))
-
-        await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="Голосование началось!")
 
         return await self.next_vote(update, context)
 
@@ -199,9 +205,13 @@ class QuoBot:
     async def vote_start(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_chat.id
 
+        participants = await self.__service.get_room_participants(str(user_id))
+        for participant in participants:
+            await context.bot.send_message(chat_id=participant,
+                                        text="Запускаем голосование...")
+
         await self.__service.start_vote(str(user_id))
 
-        participants = await self.__service.get_room_participants(str(user_id))
 
         for participant in participants:
             await context.bot.send_message(chat_id=participant,
@@ -237,6 +247,14 @@ class QuoBot:
     async def choose_service_type(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE):
         provider_name = update.message.text
         user_id = update.effective_chat.id
+
+        try:
+            _ = ProviderKind[provider_name]
+        except:
+            await context.bot.send_message(chat_id=update.effective_chat.id,
+                                        text="А я про такую категорию ничего и не знаю... Попробуй еще раз")
+            return self.host_room(update, context)
+
 
         params = room.RoomParams(
             provider_name=provider_name or "",
