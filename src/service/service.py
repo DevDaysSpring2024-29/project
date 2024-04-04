@@ -74,6 +74,7 @@ class Service(interface.ServiceInterface):
         while room_data["vote_started"] is False:
             # FIXME
             await asyncio.sleep(1)
+            logging.info("waiting")
             room_data = await self._load_room(room_id)
 
     async def create_room(self, user_id: str, params: room.RoomParams) -> int:
@@ -157,10 +158,13 @@ class Service(interface.ServiceInterface):
 
         if room_data["vote_started"] is True or room_data["owner"] != user_id:
             raise Exception("OH GOD WHY PLEASE STOP I BEG YOU AAAAA")
+
+        logging.info("STARTED")
         room_data["vote_started"] = True
 
         room_data["options_orders"] = {i: self._reshuffle_options(room_data) for i in range(len(room_data["participants"]))}
         await self._store_room(room_id, room_data)
+        logging.info("STORED")
         # Redis unlock <room_id>
 
     def _get_user_index(self, user_id: str, room_data: RoomData) -> int:
