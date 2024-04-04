@@ -15,7 +15,7 @@ class RestaurantsProvider(providers.ProviderInterface):
     async def get_entries(self, params: providers.ProviderParams) -> list[entry.ProviderEntry]:
         # TODO: remove hardcoded values
         query: str = self.query_template.format(city='Москва', amenity_type='restaurant', limit=20)
-        
+
         async with httpx.AsyncClient() as client:
             r = await client.get(self.overpass_url, params={'data': query})
 
